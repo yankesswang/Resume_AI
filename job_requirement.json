@@ -1,0 +1,126 @@
+{
+  "basic_conditions": {
+    "employment_type": "全職",
+    "job_title": "AI engineer_2470",
+    "headcount": 1,
+    "department": "通路方案事業群",
+    "job_categories": ["AI工程師", "軟體工程師"],
+    "management_responsibility": "無",
+    "business_trip": {
+      "required": true,
+      "timeframe": "1個月內"
+    },
+    "work_location": {
+      "address": "新北市新店區北新路三段221號5樓",
+      "industrial_park": null,
+      "remote_work": null
+    }
+  },
+  "job_summary": "尋找具熱情與創新精神的 AI 工程師，聚焦前沿 AI 技術（LLM / RL / Fine-tuning 等），將研究成果產品化並落地於業務場景（如智慧客服、數據分析、電腦視覺等），支援硬體設備或內部系統的 AI 能力升級。",
+  "responsibilities": [
+    {
+      "category": "研究與應用前沿技術",
+      "items": [
+        "深入研究前沿 AI 深度學習技術，包括但不限於大型語言模型（LLM）、強化學習（RL）、模型微調（Fine-tuning）等",
+        "將最新研究成果轉化為實際解決方案，解決業務場景中的挑戰"
+      ]
+    },
+    {
+      "category": "AI 系統設計與開發",
+      "items": [
+        "使用主流 AI 框架（如 PyTorch、scikit-learn）設計並實現符合公司需求的 AI 功能",
+        "針對不同業務場景（如數據分析、電腦視覺等）開發專屬 AI 解決方案",
+        "將 AI 解決方案應用於硬體設備或內部系統（例如智慧客服）"
+      ]
+    },
+    {
+      "category": "技術趨勢追蹤與導入",
+      "items": [
+        "持續關注全球 AI 領域的最新技術與研究成果",
+        "快速評估、篩選並導入具潛力的解決方案"
+      ]
+    },
+    {
+      "category": "全流程 AI 產品開發",
+      "items": [
+        "參與從數據蒐集、特徵工程、模型設計、訓練到部署的完整產品開發流程",
+        "確保系統效能與穩定性",
+        "負責 Prototype 的開發與驗證"
+      ]
+    },
+    {
+      "category": "跨部門協作與支持",
+      "items": [
+        "與工程師、PM、業務團隊緊密合作",
+        "確保 AI 產品成功落地與商業化"
+      ]
+    }
+  ],
+  "requirements": {
+    "education": {
+      "degree": "碩士",
+      "preferred_majors": ["資訊工程相關", "資訊管理相關", "電機工程等相關領域"]
+    },
+    "experience": {
+      "years_required": "不拘"
+    },
+    "languages": {
+      "chinese": {
+        "listening": "精通",
+        "speaking": "精通",
+        "reading": "精通",
+        "writing": "精通"
+      },
+      "english": {
+        "listening": "中等",
+        "speaking": "中等",
+        "reading": "精通",
+        "writing": "中等"
+      }
+    },
+    "technical_foundation": [
+      "熟悉 Linux 環境與 Python 開發",
+      "具備深度學習基礎與實務經驗",
+      "熟練使用主流 AI 框架進行模型訓練與部署"
+    ],
+    "core_competencies": [
+      "優秀的邏輯思維與問題解決能力",
+      "出色的團隊合作與溝通技巧",
+      "具備高度責任心與獨立作業能力"
+    ],
+    "learning_motivation": [
+      "快速學習新技術的能力",
+      "強烈好奇心"
+    ],
+    "other_constraints": {
+      "tools": null,
+      "skills": null,
+      "driver_license": null,
+      "certifications": null
+    }
+  },
+  "preferred_qualifications": [
+    "具備 RL、Fine-tuning、RAG 等 LLM 相關經驗者尤佳",
+    "具備將研究成果轉為可落地方案（PoC/Prototype）並驗證的經驗"
+  ],
+  "benefits_opportunities": {
+    "technical_growth": [
+      "面對並解決業界前沿技術難題，持續拓展專業技能"
+    ],
+    "resources_training": [
+      "提供業界領先的開發資源與充足的計算資源",
+      "享有多元的學術交流與技術培訓機會"
+    ],
+    "work_environment": [
+      "扁平化組織結構，溝通透明、鼓勵創新",
+      "友善團隊氛圍，讓貢獻被充分肯定"
+    ]
+  },
+  "compensation_and_leave": {
+    "salary": "面議（經常性薪資達4萬元或以上）",
+    "start_date": "不限",
+    "work_shift": "日班",
+    "leave_policy": "週休二日",
+    "scheduling": null
+  }
+}

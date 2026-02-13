@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Match Results — {{ candidate.name or "Candidate" }} — Resume AI{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>Match Results: {{ candidate.name or "N/A" }}</h2>
+  <div>
+    <a href="/candidates/{{ candidate.id }}" class="btn btn-outline-secondary">Back to Profile</a>
+    <form method="post" action="/candidates/{{ candidate.id }}/match" class="d-inline">
+      <button type="submit" class="btn btn-outline-success">Re-run Match</button>
+    </form>
+  </div>
+</div>
+
+{% if match %}
+<div class="row mb-4">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Scores</h5>
+
+        <div class="mb-3">
+          <div class="d-flex justify-content-between">
+            <span>Overall</span>
+            <strong>{{ match.overall_score | round(1) }}</strong>
+          </div>
+          <div class="progress" style="height: 24px;">
+            <div class="progress-bar {% if match.overall_score >= 75 %}bg-success{% elif match.overall_score >= 50 %}bg-warning{% else %}bg-danger{% endif %}"
+                 style="width: {{ match.overall_score }}%;">
+              {{ match.overall_score | round(1) }}%
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="d-flex justify-content-between">
+            <span>Education (20%)</span>
+            <strong>{{ match.education_score | round(1) }}</strong>
+          </div>
+          <div class="progress">
+            <div class="progress-bar bg-info" style="width: {{ match.education_score }}%;">
+              {{ match.education_score | round(1) }}
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="d-flex justify-content-between">
+            <span>Experience (40%)</span>
+            <strong>{{ match.experience_score | round(1) }}</strong>
+          </div>
+          <div class="progress">
+            <div class="progress-bar bg-info" style="width: {{ match.experience_score }}%;">
+              {{ match.experience_score | round(1) }}
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="d-flex justify-content-between">
+            <span>Skills (40%)</span>
+            <strong>{{ match.skills_score | round(1) }}</strong>
+          </div>
+          <div class="progress">
+            <div class="progress-bar bg-info" style="width: {{ match.skills_score }}%;">
+              {{ match.skills_score | round(1) }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title text-success">Strengths</h5>
+        {% if match.strengths %}
+          <ul class="list-group list-group-flush">
+            {% for s in match.strengths %}
+              <li class="list-group-item text-success">{{ s }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted">None identified.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title text-warning">Gaps</h5>
+        {% if match.gaps %}
+          <ul class="list-group list-group-flush">
+            {% for g in match.gaps %}
+              <li class="list-group-item text-warning">{{ g }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted">None identified.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if match.analysis_text %}
+<div class="card">
+  <div class="card-body">
+    <h5 class="card-title">Analysis</h5>
+    <p style="white-space: pre-wrap;">{{ match.analysis_text }}</p>
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="alert alert-info">
+  No match results yet for this candidate.
+  <form method="post" action="/candidates/{{ candidate.id }}/match" class="d-inline">
+    <button type="submit" class="btn btn-sm btn-success ms-2">Run Match Now</button>
+  </form>
+</div>
+{% endif %}
+
+{% endblock %}
