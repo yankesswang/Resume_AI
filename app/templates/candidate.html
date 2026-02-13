@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}{{ candidate.name or "Candidate" }} — Resume AI{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div class="d-flex gap-3">
+    {% if candidate.photo_path %}
+    <img src="/output/{{ candidate.photo_path }}" alt="Photo" class="rounded" style="width:100px;height:120px;object-fit:cover;">
+    {% endif %}
+    <div>
+      <h2>{{ candidate.name or "N/A" }}
+        {% if candidate.english_name %}
+          <small class="text-muted">({{ candidate.english_name }})</small>
+        {% endif %}
+      </h2>
+      <p class="mb-1">
+        {% if candidate.age %}<span class="me-3">Age: {{ candidate.age }}</span>{% endif %}
+        {% if candidate.education_level %}<span class="me-3">{{ candidate.education_level }}</span>{% endif %}
+        {% if candidate.school %}<span class="me-3">{{ candidate.school }}</span>{% endif %}
+      </p>
+      <p class="mb-1">
+        {% if candidate.email %}<span class="me-3">{{ candidate.email }}</span>{% endif %}
+        {% if candidate.mobile1 %}<span class="me-3">{{ candidate.mobile1 }}</span>{% endif %}
+      </p>
+      <p class="mb-0">
+        {% if candidate.current_status %}<span class="badge bg-info text-dark me-2">{{ candidate.current_status }}</span>{% endif %}
+        {% if candidate.years_of_experience %}<span class="badge bg-secondary me-2">{{ candidate.years_of_experience }}</span>{% endif %}
+        {% if candidate.desired_salary %}<span class="badge bg-secondary">{{ candidate.desired_salary }}</span>{% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    {% if match %}
+      <a href="/candidates/{{ candidate.id }}/match" class="btn btn-success">
+        Score: {{ match.overall_score | round(1) }}
+      </a>
+    {% endif %}
+    <form method="post" action="/candidates/{{ candidate.id }}/match">
+      <button type="submit" class="btn btn-outline-success">Run Match</button>
+    </form>
+    <form method="post" action="/candidates/{{ candidate.id }}/reparse">
+      <button type="submit" class="btn btn-outline-warning">Re-parse</button>
+    </form>
+  </div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs" role="tablist">
+  <li class="nav-item">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-info">Basic Info</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-work">Work Experience</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-edu">Education</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-skills">Skills</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-intro">Self Introduction</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-attach">Attachments</button>
+  </li>
+</ul>
+
+<div class="tab-content mt-3">
+  <!-- Basic Info -->
+  <div class="tab-pane fade show active" id="tab-info">
+    <div class="row">
+      <div class="col-md-6">
+        <table class="table table-sm">
+          <tr><th>Name</th><td>{{ candidate.name or "-" }}</td></tr>
+          <tr><th>English Name</th><td>{{ candidate.english_name or "-" }}</td></tr>
+          <tr><th>Birth Year</th><td>{{ candidate.birth_year or "-" }}</td></tr>
+          <tr><th>Nationality</th><td>{{ candidate.nationality or "-" }}</td></tr>
+          <tr><th>Current Status</th><td>{{ candidate.current_status or "-" }}</td></tr>
+          <tr><th>Earliest Start</th><td>{{ candidate.earliest_start or "-" }}</td></tr>
+          <tr><th>Military Status</th><td>{{ candidate.military_status or "-" }}</td></tr>
+          <tr><th>LinkedIn</th><td>{% if candidate.linkedin_url %}<a href="{{ candidate.linkedin_url }}" target="_blank">Profile</a>{% else %}-{% endif %}</td></tr>
+        </table>
+      </div>
+      <div class="col-md-6">
+        <table class="table table-sm">
+          <tr><th>Desired Salary</th><td>{{ candidate.desired_salary or "-" }}</td></tr>
+          <tr><th>Desired Locations</th><td>{{ (candidate.desired_locations or []) | join(", ") or "-" }}</td></tr>
+          <tr><th>Desired Industry</th><td>{{ candidate.desired_industry or "-" }}</td></tr>
+          <tr><th>Ideal Positions</th><td>{{ (candidate.ideal_positions or []) | join(", ") or "-" }}</td></tr>
+          <tr><th>Job Categories</th><td>{{ (candidate.desired_job_categories or []) | join(", ") or "-" }}</td></tr>
+          <tr><th>District</th><td>{{ candidate.district or "-" }}</td></tr>
+          <tr><th>Address</th><td>{{ candidate.mailing_address or "-" }}</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Work Experience -->
+  <div class="tab-pane fade" id="tab-work">
+    {% if candidate.work_experiences %}
+      {% for we in candidate.work_experiences %}
+      <div class="card mb-3">
+        <div class="card-body">
+          <h5 class="card-title">{{ we.job_title or "N/A" }} @ {{ we.company_name or "N/A" }}</h5>
+          <p class="text-muted mb-2">
+            {{ we.date_start or "?" }} — {{ we.date_end or "?" }}
+            {% if we.duration %}({{ we.duration }}){% endif %}
+          </p>
+          {% if we.industry %}<p class="mb-1"><strong>Industry:</strong> {{ we.industry }}</p>{% endif %}
+          {% if we.company_size %}<p class="mb-1"><strong>Size:</strong> {{ we.company_size }}</p>{% endif %}
+          {% if we.job_category %}<p class="mb-1"><strong>Category:</strong> {{ we.job_category }}</p>{% endif %}
+          {% if we.job_description %}<p class="mb-1"><strong>Description:</strong> {{ we.job_description }}</p>{% endif %}
+          {% if we.job_skills %}<p class="mb-0"><strong>Skills:</strong> {{ we.job_skills }}</p>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="text-muted">No work experience recorded.</p>
+    {% endif %}
+  </div>
+
+  <!-- Education -->
+  <div class="tab-pane fade" id="tab-edu">
+    {% if candidate.education %}
+      {% for ed in candidate.education %}
+      <div class="card mb-3">
+        <div class="card-body">
+          <h5 class="card-title">{{ ed.school or "N/A" }}</h5>
+          <p class="mb-1">{{ ed.department or "-" }} — {{ ed.degree_level or "-" }}</p>
+          <p class="text-muted mb-0">{{ ed.date_start or "?" }} — {{ ed.date_end or "?" }}
+            {% if ed.region %}| {{ ed.region }}{% endif %}
+            {% if ed.status %}| {{ ed.status }}{% endif %}
+          </p>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="text-muted">No education records.</p>
+    {% endif %}
+  </div>
+
+  <!-- Skills -->
+  <div class="tab-pane fade" id="tab-skills">
+    {% if candidate.skills %}
+      <div class="d-flex flex-wrap gap-2">
+        {% for s in candidate.skills %}
+          <span class="badge bg-primary fs-6">{{ s.skill_name }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if candidate.skills_text %}
+      <div class="mt-3">
+        <h6>Skills Summary</h6>
+        <p>{{ candidate.skills_text }}</p>
+      </div>
+    {% endif %}
+    {% if not candidate.skills and not candidate.skills_text %}
+      <p class="text-muted">No skills recorded.</p>
+    {% endif %}
+  </div>
+
+  <!-- Self Introduction -->
+  <div class="tab-pane fade" id="tab-intro">
+    {% if candidate.self_introduction %}
+      <div class="p-3 bg-light rounded">{{ candidate.self_introduction }}</div>
+    {% else %}
+      <p class="text-muted">No self introduction.</p>
+    {% endif %}
+  </div>
+
+  <!-- Attachments -->
+  <div class="tab-pane fade" id="tab-attach">
+    {% if candidate.attachments %}
+      <ul class="list-group">
+        {% for att in candidate.attachments %}
+        <li class="list-group-item">
+          <strong>{{ att.name or att.attachment_type or "Attachment" }}</strong>
+          {% if att.description %}<p class="mb-0 text-muted">{{ att.description }}</p>{% endif %}
+          {% if att.url %}<a href="{{ att.url }}" target="_blank">Open</a>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted">No attachments.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

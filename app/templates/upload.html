@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Upload — Resume AI{% endblock %}
+{% block content %}
+
+<h2 class="mb-4">Upload Resume PDF</h2>
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Upload New PDF</h5>
+        <form method="post" action="/upload" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label for="file" class="form-label">Select PDF file</label>
+            <input type="file" class="form-control" id="file" name="file" accept=".pdf" required>
+          </div>
+          <button type="submit" class="btn btn-primary">Upload & Process</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Ingest Existing Markdown</h5>
+        {% if md_files is defined and md_files %}
+          <form method="post" action="/ingest-markdown">
+            <div class="mb-3">
+              <label for="md_path" class="form-label">Select markdown file</label>
+              <select class="form-select" id="md_path" name="md_path" required>
+                {% for f in md_files %}
+                  <option value="{{ f }}">{{ f | replace(request.url.path, '') }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <button type="submit" class="btn btn-secondary">Ingest Markdown</button>
+          </form>
+        {% else %}
+          <p class="text-muted mb-2">No existing markdown files found in output/.</p>
+          <a href="/ingest-existing" class="btn btn-outline-secondary">Scan for Files</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
