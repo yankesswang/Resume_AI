@@ -16,8 +16,9 @@ from app.database import (
     upsert_match_result,
 )
 from app.llm import match_candidate_to_job
-from app.models import MatchResultExtract, ResumeExtract
+from app.models import EnhancedMatchResult, MatchResultExtract, ResumeExtract
 from app.parser_service import ingest_existing_markdown, ingest_pdf, reparse_existing
+from app.scoring.pipeline import run_full_scoring
 
 logger = logging.getLogger(__name__)
 
@@ -37,26 +38,62 @@ def _get_default_job_id() -> int:
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 
 
+_photo_cache: dict[str, str] | None = None
+
+
+def _build_photo_cache() -> dict[str, str]:
+    """Build a relative-path -> URL cache for all image files in output/."""
+    cache: dict[str, str] = {}
+    if OUTPUT_DIR.exists():
+        for p in OUTPUT_DIR.rglob("*"):
+            if p.is_file() and p.suffix.lower() in (".jpeg", ".jpg", ".png", ".gif", ".webp"):
+                rel = str(p.relative_to(OUTPUT_DIR))
+                url = f"/output/{rel}"
+                cache[rel] = url
+    return cache
+
+
+def _extract_output_relative_dir(md_path: str) -> str:
+    """Extract the directory relative to 'output/' from a source_md_path.
+
+    Handles both relative paths like 'output/1/1_original.md'
+    and absolute paths from other machines like
+    '/home/trx50/gitlab/resume_ai/output/1/1_original.md'.
+    """
+    # Find 'output/' in the path and take everything after it
+    idx = md_path.find("output/")
+    if idx != -1:
+        # e.g. "output/1/1_original.md" -> "1"
+        rel = md_path[idx + len("output/"):]
+        return str(Path(rel).parent)
+    return ""
+
+
 def _resolve_photo_url(candidate: dict) -> str:
     """Build the /output/... URL for a candidate's photo."""
+    global _photo_cache
     photo = candidate.get("photo_path", "")
     if not photo:
         return ""
-    # Derive the output sub-folder from source_md_path
+
+    if _photo_cache is None:
+        _photo_cache = _build_photo_cache()
+
     md_path = candidate.get("source_md_path", "")
     if md_path:
-        folder = Path(md_path).parent
-        # Check the markdown's own directory first
-        if (Path(OUTPUT_DIR).parent / folder / photo).exists():
-            return f"/{folder}/{photo}"
-        # For batch imports, images are in the parent directory (e.g. output/many_people/)
-        parent_folder = folder.parent
-        if (Path(OUTPUT_DIR).parent / parent_folder / photo).exists():
-            return f"/{parent_folder}/{photo}"
-    # Fallback: search output/ subdirectories recursively
-    for sub in OUTPUT_DIR.rglob(photo):
-        rel = sub.relative_to(OUTPUT_DIR)
-        return f"/output/{rel}"
+        rel_dir = _extract_output_relative_dir(md_path)
+        if rel_dir:
+            # Check candidate's own directory (e.g. "1/_page_0_Picture_2.jpeg")
+            candidate_rel = f"{rel_dir}/{photo}"
+            if candidate_rel in _photo_cache:
+                return _photo_cache[candidate_rel]
+            # Check parent directory (batch imports with subdirs)
+            parent_dir = str(Path(rel_dir).parent)
+            if parent_dir and parent_dir != ".":
+                parent_rel = f"{parent_dir}/{photo}"
+                if parent_rel in _photo_cache:
+                    return _photo_cache[parent_rel]
+
     return f"/output/{photo}"
 
 
@@ -77,19 +114,28 @@ async def upload_page(request: Request):
 
 
 @router.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     pdf_bytes = await file.read()
     candidate_id = ingest_pdf(pdf_bytes, file.filename)
+    # Auto-run scoring after ingestion
+    job_id = _get_default_job_id()
+    background_tasks.add_task(_run_match, candidate_id, job_id)
     return RedirectResponse(url=f"/candidates/{candidate_id}", status_code=303)
 
 
 @router.post("/api/upload")
-async def api_upload_pdf(file: UploadFile = File(...)):
+async def api_upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     pdf_bytes = await file.read()
     candidate_id = ingest_pdf(pdf_bytes, file.filename)
     candidate = get_candidate_detail(candidate_id)
     if candidate:
         candidate["photo_url"] = _resolve_photo_url(candidate)
+
+    # Auto-run scoring after ingestion
+    job_id = _get_default_job_id()
+    background_tasks.add_task(_run_match, candidate_id, job_id)
+    logger.info("Auto-queued scoring for candidate %d", candidate_id)
+
     return {"candidate_id": candidate_id, "candidate": candidate}
 
 
@@ -114,7 +160,7 @@ async def candidate_detail(request: Request, candidate_id: int):
 
 
 def _run_match(candidate_id: int, job_id: int):
-    """Background task to run matching."""
+    """Background task to run enhanced scoring pipeline."""
     try:
         detail = get_candidate_detail(candidate_id)
         if not detail:
@@ -126,35 +172,10 @@ def _run_match(candidate_id: int, job_id: int):
 
         job_data = json.loads(job_row["source_json"])
 
-        # Build a ResumeExtract from the stored detail
-        candidate_extract = ResumeExtract(
-            name=detail["name"] or "",
-            english_name=detail["english_name"] or "",
-            birth_year=detail["birth_year"] or "",
-            age=detail["age"] or "",
-            nationality=detail["nationality"] or "",
-            current_status=detail["current_status"] or "",
-            earliest_start=detail["earliest_start"] or "",
-            education_level=detail["education_level"] or "",
-            school=detail["school"] or "",
-            major=detail["major"] or "",
-            military_status=detail["military_status"] or "",
-            desired_salary=detail["desired_salary"] or "",
-            desired_job_categories=detail["desired_job_categories"],
-            desired_locations=detail["desired_locations"],
-            desired_industry=detail["desired_industry"] or "",
-            ideal_positions=detail["ideal_positions"],
-            years_of_experience=detail["years_of_experience"] or "",
-            linkedin_url=detail["linkedin_url"] or "",
-            email=detail["email"] or "",
-            skills_text=detail["skills_text"] or "",
-            skill_tags=detail["skill_tags"],
-            self_introduction=detail["self_introduction"] or "",
-        )
-
-        result = match_candidate_to_job(candidate_extract, job_data)
+        # Run the full enhanced scoring pipeline
+        result = run_full_scoring(detail, job_data)
         upsert_match_result(candidate_id, job_id, result)
-        logger.info("Match completed for candidate %d, job %d", candidate_id, job_id)
+        logger.info("Enhanced match completed for candidate %d, job %d", candidate_id, job_id)
     except Exception:
         logger.exception("Match failed for candidate %d", candidate_id)
 
@@ -225,6 +246,32 @@ async def api_run_match(candidate_id: int, background_tasks: BackgroundTasks):
     job_id = _get_default_job_id()
     background_tasks.add_task(_run_match, candidate_id, job_id)
     return {"status": "matching", "candidate_id": candidate_id, "job_id": job_id}
+
+
+@router.get("/api/candidates/{candidate_id}/scorecard")
+async def api_scorecard(candidate_id: int):
+    """Return the full enhanced scorecard with all dimension breakdowns."""
+    try:
+        job_id = _get_default_job_id()
+        match = get_match_result(candidate_id, job_id)
+    except Exception:
+        match = None
+    if not match:
+        return JSONResponse({"error": "No match result found. Run match first."}, status_code=404)
+    return {"scorecard": match}
+
+
+@router.post("/api/candidates/batch-match")
+async def api_batch_match(background_tasks: BackgroundTasks):
+    """Run matching for all candidates that don't have a match result yet."""
+    job_id = _get_default_job_id()
+    candidates = get_all_candidates_summary()
+    queued = 0
+    for c in candidates:
+        if c.get("overall_score") is None:
+            background_tasks.add_task(_run_match, c["id"], job_id)
+            queued += 1
+    return {"status": "queued", "count": queued, "job_id": job_id}
 
 
 @router.get("/api/filters")

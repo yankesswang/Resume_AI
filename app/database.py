@@ -5,6 +5,7 @@ from pathlib import Path
 from app.models import (
     AttachmentExtract,
     EducationExtract,
+    EnhancedMatchResult,
     MatchResultExtract,
     ReferenceExtract,
     ResumeExtract,
@@ -155,7 +156,31 @@ def init_db():
     existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(candidates)").fetchall()}
     if "code_104" not in existing_cols:
         conn.execute("ALTER TABLE candidates ADD COLUMN code_104 TEXT")
-        conn.commit()
+    if "embedding" not in existing_cols:
+        conn.execute("ALTER TABLE candidates ADD COLUMN embedding TEXT")
+    for col in ("personal_motto", "personal_traits", "autobiography"):
+        if col not in existing_cols:
+            conn.execute(f"ALTER TABLE candidates ADD COLUMN {col} TEXT")
+
+    # Migrate match_results for enhanced scoring columns
+    match_cols = {r[1] for r in conn.execute("PRAGMA table_info(match_results)").fetchall()}
+    new_match_columns = {
+        "s_ai": "REAL DEFAULT 0",
+        "m_eng": "REAL DEFAULT 0",
+        "s_total": "REAL DEFAULT 0",
+        "education_detail": "TEXT",      # JSON
+        "experience_detail": "TEXT",     # JSON
+        "engineering_detail": "TEXT",    # JSON
+        "skill_detail": "TEXT",          # JSON
+        "passed_hard_filter": "INTEGER DEFAULT 1",
+        "hard_filter_failures": "TEXT",  # JSON
+        "semantic_similarity": "REAL DEFAULT 0",
+        "tags": "TEXT",                  # JSON
+        "interview_suggestions": "TEXT", # JSON
+    }
+    for col_name, col_type in new_match_columns.items():
+        if col_name not in match_cols:
+            conn.execute(f"ALTER TABLE match_results ADD COLUMN {col_name} {col_type}")
 
     conn.commit()
     conn.close()
@@ -170,6 +195,27 @@ def insert_candidate(
     conn = _connect()
     cur = conn.cursor()
 
+    # Deduplicate: if code_104 exists, update existing record instead of inserting
+    if extract.code_104:
+        existing = cur.execute(
+            "SELECT id FROM candidates WHERE code_104 = ?", (extract.code_104,)
+        ).fetchone()
+        if existing:
+            candidate_id = existing["id"]
+            conn.close()
+            # Re-use the update path: delete old child data and update
+            delete_candidate_data(candidate_id)
+            update_candidate_from_extract(candidate_id, extract, raw_markdown)
+            # Update source paths
+            c2 = _connect()
+            c2.execute(
+                "UPDATE candidates SET source_pdf_path=?, source_md_path=? WHERE id=?",
+                (source_pdf_path, source_md_path, candidate_id),
+            )
+            c2.commit()
+            c2.close()
+            return candidate_id
+
     cur.execute(
         """INSERT INTO candidates (
             name, english_name, code_104, birth_year, age, nationality, current_status,
@@ -179,8 +225,9 @@ def insert_candidate(
             linkedin_url, photo_path, email, mobile1, mobile2, phone_home,
             phone_work, district, mailing_address, work_type, shift_preference,
             remote_work_preference, skills_text, skill_tags, self_introduction,
+            personal_motto, personal_traits, autobiography,
             raw_markdown, source_pdf_path, source_md_path
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             extract.name,
             extract.english_name,
@@ -215,6 +262,9 @@ def insert_candidate(
             extract.skills_text,
             json.dumps(extract.skill_tags, ensure_ascii=False),
             extract.self_introduction,
+            extract.personal_motto,
+            extract.personal_traits,
+            extract.autobiography,
             raw_markdown,
             source_pdf_path,
             source_md_path,
@@ -280,11 +330,12 @@ def insert_candidate(
 def get_all_candidates_summary() -> list[dict]:
     conn = _connect()
     rows = conn.execute(
-        """SELECT c.id, c.name, c.code_104, c.education_level, c.school, c.major,
+        """SELECT c.id, c.name, c.code_104, c.birth_year, c.education_level, c.school, c.major,
                   c.years_of_experience, c.ideal_positions,
                   c.desired_job_categories, c.skill_tags,
                   c.photo_path, c.source_md_path,
-                  m.overall_score
+                  m.overall_score, m.s_ai, m.m_eng, m.s_total,
+                  m.experience_detail, m.passed_hard_filter, m.tags
            FROM candidates c
            LEFT JOIN match_results m ON c.id = m.candidate_id
            ORDER BY c.id DESC"""
@@ -308,6 +359,15 @@ def get_all_candidates_summary() -> list[dict]:
         d["desired_job_categories"] = json.loads(d["desired_job_categories"] or "[]")
         d["skill_tags"] = json.loads(d["skill_tags"] or "[]")
         d["education"] = edu_map.get(d["id"], [])
+        # Parse enhanced scoring fields
+        if d.get("experience_detail"):
+            d["experience_detail"] = json.loads(d["experience_detail"])
+        if d.get("tags"):
+            d["tags"] = json.loads(d["tags"])
+        else:
+            d["tags"] = []
+        if "passed_hard_filter" in d and d["passed_hard_filter"] is not None:
+            d["passed_hard_filter"] = bool(d["passed_hard_filter"])
         results.append(d)
     return results
 
@@ -360,29 +420,79 @@ def get_candidate_detail(candidate_id: int) -> dict | None:
     return candidate
 
 
-def upsert_match_result(candidate_id: int, job_id: int, result: MatchResultExtract):
+def upsert_match_result(candidate_id: int, job_id: int, result: MatchResultExtract | EnhancedMatchResult):
     conn = _connect()
-    conn.execute(
-        """INSERT INTO match_results (
-            candidate_id, job_id, overall_score, education_score,
-            experience_score, skills_score, analysis_text, strengths, gaps
-        ) VALUES (?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(candidate_id, job_id) DO UPDATE SET
-            overall_score=excluded.overall_score,
-            education_score=excluded.education_score,
-            experience_score=excluded.experience_score,
-            skills_score=excluded.skills_score,
-            analysis_text=excluded.analysis_text,
-            strengths=excluded.strengths,
-            gaps=excluded.gaps,
-            created_at=CURRENT_TIMESTAMP""",
-        (
-            candidate_id, job_id, result.overall_score, result.education_score,
-            result.experience_score, result.skills_score, result.analysis_text,
-            json.dumps(result.strengths, ensure_ascii=False),
-            json.dumps(result.gaps, ensure_ascii=False),
-        ),
-    )
+
+    if isinstance(result, EnhancedMatchResult):
+        conn.execute(
+            """INSERT INTO match_results (
+                candidate_id, job_id, overall_score, education_score,
+                experience_score, skills_score, analysis_text, strengths, gaps,
+                s_ai, m_eng, s_total,
+                education_detail, experience_detail, engineering_detail, skill_detail,
+                passed_hard_filter, hard_filter_failures, semantic_similarity,
+                tags, interview_suggestions
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(candidate_id, job_id) DO UPDATE SET
+                overall_score=excluded.overall_score,
+                education_score=excluded.education_score,
+                experience_score=excluded.experience_score,
+                skills_score=excluded.skills_score,
+                analysis_text=excluded.analysis_text,
+                strengths=excluded.strengths,
+                gaps=excluded.gaps,
+                s_ai=excluded.s_ai,
+                m_eng=excluded.m_eng,
+                s_total=excluded.s_total,
+                education_detail=excluded.education_detail,
+                experience_detail=excluded.experience_detail,
+                engineering_detail=excluded.engineering_detail,
+                skill_detail=excluded.skill_detail,
+                passed_hard_filter=excluded.passed_hard_filter,
+                hard_filter_failures=excluded.hard_filter_failures,
+                semantic_similarity=excluded.semantic_similarity,
+                tags=excluded.tags,
+                interview_suggestions=excluded.interview_suggestions,
+                created_at=CURRENT_TIMESTAMP""",
+            (
+                candidate_id, job_id, result.overall_score, result.education_score,
+                result.experience_score, result.skills_score, result.analysis_text,
+                json.dumps(result.strengths, ensure_ascii=False),
+                json.dumps(result.gaps, ensure_ascii=False),
+                result.s_ai, result.m_eng, result.s_total,
+                json.dumps(result.education_detail.model_dump(), ensure_ascii=False),
+                json.dumps(result.experience_detail.model_dump(), ensure_ascii=False),
+                json.dumps(result.engineering_detail.model_dump(), ensure_ascii=False),
+                json.dumps(result.skill_detail.model_dump(), ensure_ascii=False),
+                1 if result.passed_hard_filter else 0,
+                json.dumps(result.hard_filter_failures, ensure_ascii=False),
+                result.semantic_similarity,
+                json.dumps(result.tags, ensure_ascii=False),
+                json.dumps(result.interview_suggestions, ensure_ascii=False),
+            ),
+        )
+    else:
+        conn.execute(
+            """INSERT INTO match_results (
+                candidate_id, job_id, overall_score, education_score,
+                experience_score, skills_score, analysis_text, strengths, gaps
+            ) VALUES (?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(candidate_id, job_id) DO UPDATE SET
+                overall_score=excluded.overall_score,
+                education_score=excluded.education_score,
+                experience_score=excluded.experience_score,
+                skills_score=excluded.skills_score,
+                analysis_text=excluded.analysis_text,
+                strengths=excluded.strengths,
+                gaps=excluded.gaps,
+                created_at=CURRENT_TIMESTAMP""",
+            (
+                candidate_id, job_id, result.overall_score, result.education_score,
+                result.experience_score, result.skills_score, result.analysis_text,
+                json.dumps(result.strengths, ensure_ascii=False),
+                json.dumps(result.gaps, ensure_ascii=False),
+            ),
+        )
     conn.commit()
     conn.close()
 
@@ -399,6 +509,15 @@ def get_match_result(candidate_id: int, job_id: int) -> dict | None:
     d = dict(row)
     d["strengths"] = json.loads(d["strengths"] or "[]")
     d["gaps"] = json.loads(d["gaps"] or "[]")
+    # Parse enhanced scoring fields
+    for json_field in ("education_detail", "experience_detail", "engineering_detail",
+                       "skill_detail", "hard_filter_failures", "tags", "interview_suggestions"):
+        if json_field in d and d[json_field]:
+            d[json_field] = json.loads(d[json_field])
+        elif json_field in d:
+            d[json_field] = {} if json_field.endswith("_detail") else []
+    if "passed_hard_filter" in d:
+        d["passed_hard_filter"] = bool(d.get("passed_hard_filter", 1))
     return d
 
 
@@ -454,6 +573,27 @@ def get_filter_options() -> dict:
     }
 
 
+def update_candidate_embedding(candidate_id: int, embedding: list[float]):
+    conn = _connect()
+    conn.execute(
+        "UPDATE candidates SET embedding = ? WHERE id = ?",
+        (json.dumps(embedding), candidate_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_candidate_embedding(candidate_id: int) -> list[float] | None:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT embedding FROM candidates WHERE id = ?", (candidate_id,)
+    ).fetchone()
+    conn.close()
+    if not row or not row["embedding"]:
+        return None
+    return json.loads(row["embedding"])
+
+
 def delete_candidate_data(candidate_id: int):
     """Delete all data for a candidate (used before re-parse)."""
     conn = _connect()
@@ -478,7 +618,9 @@ def update_candidate_from_extract(candidate_id: int, extract: ResumeExtract, raw
             photo_path=?, email=?, mobile1=?, mobile2=?, phone_home=?,
             phone_work=?, district=?, mailing_address=?, work_type=?,
             shift_preference=?, remote_work_preference=?, skills_text=?,
-            skill_tags=?, self_introduction=?, raw_markdown=?
+            skill_tags=?, self_introduction=?,
+            personal_motto=?, personal_traits=?, autobiography=?,
+            raw_markdown=?
         WHERE id=?""",
         (
             extract.name, extract.english_name, extract.code_104, extract.birth_year, extract.age,
@@ -495,7 +637,9 @@ def update_candidate_from_extract(candidate_id: int, extract: ResumeExtract, raw
             extract.work_type, extract.shift_preference, extract.remote_work_preference,
             extract.skills_text,
             json.dumps(extract.skill_tags, ensure_ascii=False),
-            extract.self_introduction, raw_markdown, candidate_id,
+            extract.self_introduction,
+            extract.personal_motto, extract.personal_traits, extract.autobiography,
+            raw_markdown, candidate_id,
         ),
     )
     conn.commit()

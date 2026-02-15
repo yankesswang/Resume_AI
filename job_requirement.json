@@ -122,5 +122,30 @@
     "work_shift": "日班",
     "leave_policy": "週休二日",
     "scheduling": null
+  },
+  "hard_filters": {
+    "required_skills": ["Python"],
+    "required_frameworks": ["PyTorch", "TensorFlow"],
+    "required_keywords": ["Transformer", "Attention", "BERT", "LLM", "深度學習", "Deep Learning", "機器學習", "Machine Learning"]
+  },
+  "scoring_weights": {
+    "education": 0.4,
+    "experience": 0.3,
+    "skills": 0.1,
+    "projects": 0.2
+  },
+  "tech_stack_weights": {
+    "Python": 1.0,
+    "LangChain": 1.2,
+    "PyTorch": 1.5,
+    "TensorFlow": 1.2,
+    "vLLM": 2.0,
+    "TensorRT-LLM": 2.0,
+    "CUDA": 2.5,
+    "RAG": 1.5,
+    "Fine-tuning": 1.8,
+    "LoRA": 1.8,
+    "Docker": 1.0,
+    "Kubernetes": 1.5
   }
 }

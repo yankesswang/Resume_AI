@@ -57,8 +57,12 @@
   </v-layout>
 </template>
 
+<script>
+export default { name: 'ListView' }
+</script>
+
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchCandidates, fetchFilters, uploadPdf } from '../api'
 import FilterPanel from '../components/FilterPanel.vue'
@@ -70,6 +74,7 @@ const filterOptions = ref({ education_levels: [], skill_tags: [], experience_ran
 const showUpload = ref(false)
 const uploadFile = ref(null)
 const uploading = ref(false)
+const loaded = ref(false)
 
 async function loadData() {
   const [cands, filters] = await Promise.all([fetchCandidates(), fetchFilters()])
@@ -92,7 +97,14 @@ async function doUpload() {
   }
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadData()
+  loaded.value = true
+})
+
+onActivated(() => {
+  if (loaded.value) loadData()
+})
 </script>
 
 <style scoped>

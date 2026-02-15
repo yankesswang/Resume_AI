@@ -2,6 +2,7 @@ import os
 import re
 import gc
 import time
+import unicodedata
 import torch
 import logging
 from pathlib import Path
@@ -122,6 +123,16 @@ class DocumentParser:
 
         if not text:
             raise RuntimeError("Marker returned empty text")
+
+        # Normalize CJK Compatibility Ideographs to standard CJK characters.
+        # Marker sometimes emits ⼤ (U+2F24) instead of 大 (U+5927), etc.
+        text = unicodedata.normalize("NFKC", text)
+        # Fix CJK Radicals Supplement chars that NFKC doesn't handle
+        text = text.translate({
+            0x2EA0: 0x6C11,  # ⺠ → 民
+            0x2ED1: 0x9577,  # ⻑ → 長
+            0x2EE9: 0x9EC3,  # ⻩ → 黃
+        })
 
 # -------- Phase 2: ordered splitting (span id + page + image) --------
         pattern = (

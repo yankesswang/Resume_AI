@@ -5,18 +5,27 @@ __pycache__/
 *.so
 .venv/
 dist/
+*.egg-info/
 
-# User data - resumes and parsed output
+# User data - resumes, parsed output, databases
 data/
 output/
 resume_ai.db
 
+# Frontend
+frontend/node_modules/
+frontend/.vite/
+frontend/dist/
+
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
+Thumbs.db
 
 # Environment
 .env

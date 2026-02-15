@@ -159,3 +159,114 @@ def match_candidate_to_job(candidate: ResumeExtract, job: dict) -> MatchResultEx
         raise
 
     return MatchResultExtract.model_validate(data)
+
+
+# --- Enhanced LLM functions for the screening funnel ---
+
+_TIER_CLASSIFY_PROMPT = """\
+You are an AI recruitment expert. Analyze this candidate's work experience and classify their AI engineering depth into one of 4 tiers:
+
+Tier 1 (Wrapper/60pts): Only calls OpenAI/Claude API, writes prompts, builds simple chatbots with Streamlit/Gradio.
+Tier 2 (RAG Architect/80pts): Designs RAG pipelines, uses vector databases, implements hybrid search, function calling, agent frameworks.
+Tier 3 (Model Tuner/90pts): Fine-tunes models with PyTorch/HuggingFace, uses LoRA/QLoRA/PEFT, handles quantization, understands training dynamics.
+Tier 4 (Inference Ops/100pts): Optimizes inference with vLLM/TensorRT-LLM, manages CUDA/GPU memory, implements Flash Attention, handles high-throughput serving.
+
+Depth Check: Is this candidate just calling APIs (Wrapper) or actually building/optimizing models?
+Research vs Engineering: Do they mention paper implementations OR solving OOM/latency issues?
+Metric Check (防吹牛): Do they provide specific quantified metrics (latency reduction %, accuracy improvement)?
+
+Return ONLY valid JSON:
+{
+  "tier": 1,
+  "tier_label": "Wrapper",
+  "evidence": ["key phrase 1", "key phrase 2"],
+  "analysis": "1-2 sentences in Traditional Chinese explaining the classification",
+  "tech_stack_score": 0.0,
+  "complexity_score": 0.0,
+  "metric_score": 0.0
+}
+
+No markdown fences."""
+
+
+def classify_ai_tier(work_experiences: list[dict], skill_tags: list[str]) -> dict:
+    """Use LLM to classify candidate into the 4-tier AI pyramid."""
+    exp_text = json.dumps(work_experiences, ensure_ascii=False)
+    skills_text = ", ".join(skill_tags) if skill_tags else "None"
+
+    user_content = f"=== 工作經驗 ===\n{exp_text}\n\n=== 技能標籤 ===\n{skills_text}"
+    user_content = _truncate_to_fit(_TIER_CLASSIFY_PROMPT, user_content)
+
+    messages = [
+        {"role": "system", "content": _TIER_CLASSIFY_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+
+    raw = _chat(messages, temperature=0.2, max_tokens=1024)
+    cleaned = _strip_fences(raw)
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        logger.error("LLM tier classification returned invalid JSON: %s", cleaned[:500])
+        return {"tier": 1, "tier_label": "Wrapper", "evidence": [], "analysis": "分類失敗"}
+
+
+_SCORECARD_PROMPT = """\
+You are an AI recruitment analyst. Generate a detailed scorecard for a candidate based on the scoring data provided.
+
+Output in Traditional Chinese. Return ONLY valid JSON:
+{
+  "tags": ["#Fine-tuning", "#RAG-Expert"],
+  "analysis_text": "2-3 paragraphs analysis in Traditional Chinese. Include: overall assessment, AI depth evaluation, engineering capability, and recommendation.",
+  "strengths": ["strength 1 in Traditional Chinese", "strength 2"],
+  "gaps": ["gap 1 in Traditional Chinese"],
+  "interview_suggestions": ["suggestion 1 in Traditional Chinese"]
+}
+
+Be specific and reference actual evidence from the candidate data. No markdown fences."""
+
+
+def generate_scorecard(
+    candidate: dict,
+    scores: dict,
+    job_data: dict,
+) -> dict:
+    """Generate the final scorecard using LLM deep reasoning."""
+    scoring_summary = json.dumps(scores, ensure_ascii=False)
+    candidate_summary = {
+        "name": candidate.get("name", ""),
+        "education": candidate.get("education", []),
+        "work_experiences": candidate.get("work_experiences", []),
+        "skill_tags": candidate.get("skill_tags", []),
+        "self_introduction": candidate.get("self_introduction", ""),
+    }
+    candidate_json = json.dumps(candidate_summary, ensure_ascii=False)
+    job_json = json.dumps(job_data, ensure_ascii=False)
+
+    user_content = (
+        f"=== 評分數據 ===\n{scoring_summary}\n\n"
+        f"=== 候選人資料 ===\n{candidate_json}\n\n"
+        f"=== 職位需求 ===\n{job_json}"
+    )
+    user_content = _truncate_to_fit(_SCORECARD_PROMPT, user_content)
+
+    messages = [
+        {"role": "system", "content": _SCORECARD_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+
+    raw = _chat(messages, temperature=0.3, max_tokens=RESPONSE_TOKENS)
+    cleaned = _strip_fences(raw)
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        logger.error("LLM scorecard returned invalid JSON: %s", cleaned[:500])
+        return {
+            "tags": [],
+            "analysis_text": "評分卡生成失敗",
+            "strengths": [],
+            "gaps": [],
+            "interview_suggestions": [],
+        }

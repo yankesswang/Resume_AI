@@ -33,15 +33,21 @@ def _connect() -> sqlite3.Connection:
 
 def find_broken_candidates(conn: sqlite3.Connection) -> list[dict]:
     """Find candidates that need repair."""
+    # Find candidates with broken names, missing code_104, or bad education data
     rows = conn.execute("""
-        SELECT id, name, code_104, raw_markdown
-        FROM candidates
-        WHERE raw_markdown IS NOT NULL AND raw_markdown != ''
+        SELECT DISTINCT c.id, c.name, c.code_104, c.raw_markdown
+        FROM candidates c
+        LEFT JOIN education e ON c.id = e.candidate_id
+        WHERE c.raw_markdown IS NOT NULL AND c.raw_markdown != ''
           AND (
-            name IS NULL OR name = ''
-            OR name LIKE '%英⽂名字%' OR name LIKE '%英文名字%'
-            OR name LIKE '%|%'
-            OR code_104 IS NULL OR code_104 = ''
+            c.name IS NULL OR c.name = ''
+            OR c.name LIKE '%英⽂名字%' OR c.name LIKE '%英文名字%'
+            OR c.name LIKE '%|%'
+            OR c.code_104 IS NULL OR c.code_104 = ''
+            OR c.school LIKE '%<br>%'
+            OR e.school LIKE '%職務%' OR e.school LIKE '%工作%' OR e.school LIKE '%⼯作%'
+            OR e.school LIKE '%,%'
+            OR (e.school IS NOT NULL AND e.school = '' AND e.department = '')
           )
     """).fetchall()
     return [dict(r) for r in rows]
@@ -69,8 +75,10 @@ def repair_candidate(candidate: dict, dry_run: bool) -> dict:
     if not old_code and new_code:
         changes["code_104"] = (old_code, new_code)
 
+    # Always mark as needing repair if education/school data is being re-parsed
+    # (the caller already filtered for broken education data)
     if not changes:
-        return {"id": cid, "status": "skip", "reason": "no improvement"}
+        changes["education"] = ("(re-parsed)", f"{len(extract.education)} entries")
 
     if not dry_run:
         conn = _connect()

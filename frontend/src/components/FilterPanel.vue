@@ -4,7 +4,7 @@
       <v-col cols="12" sm="6" md="2">
         <v-text-field
           v-model="filters.searchName"
-          label="Search Name"
+          label="Search Name / 104 Code"
           prepend-inner-icon="mdi-magnify"
           variant="outlined"
           clearable
@@ -59,6 +59,17 @@
           hide-details
         />
       </v-col>
+      <v-col cols="12" sm="6" md="2">
+        <v-select
+          v-model="filters.aiTier"
+          :items="tierItems"
+          label="AI Tier"
+          variant="outlined"
+          clearable
+          density="compact"
+          hide-details
+        />
+      </v-col>
       <v-col cols="auto" class="d-flex align-center">
         <v-btn
           :variant="filters.topUniversityOnly ? 'flat' : 'outlined'"
@@ -68,6 +79,28 @@
           @click="filters.topUniversityOnly = !filters.topUniversityOnly"
         >
           頂大
+        </v-btn>
+      </v-col>
+      <v-col cols="auto" class="d-flex align-center">
+        <v-btn
+          :variant="filters.hardFilterPassedOnly ? 'flat' : 'outlined'"
+          :color="filters.hardFilterPassedOnly ? 'success' : undefined"
+          size="small"
+          prepend-icon="mdi-check-circle"
+          @click="filters.hardFilterPassedOnly = !filters.hardFilterPassedOnly"
+        >
+          Passed
+        </v-btn>
+      </v-col>
+      <v-col cols="auto" class="d-flex align-center">
+        <v-btn
+          :variant="filters.bookmarkedOnly ? 'flat' : 'outlined'"
+          :color="filters.bookmarkedOnly ? 'amber-darken-2' : undefined"
+          size="small"
+          prepend-icon="mdi-star"
+          @click="filters.bookmarkedOnly = !filters.bookmarkedOnly"
+        >
+          有興趣
         </v-btn>
       </v-col>
       <v-col cols="auto" class="d-flex align-center">
@@ -81,6 +114,13 @@
 import { useFilterStore } from '../stores/filters'
 
 const filters = useFilterStore()
+
+const tierItems = [
+  { title: 'Tier 1 - Wrapper', value: 1 },
+  { title: 'Tier 2 - RAG Architect', value: 2 },
+  { title: 'Tier 3 - Model Tuner', value: 3 },
+  { title: 'Tier 4 - Inference Ops', value: 4 },
+]
 
 defineProps({
   educationLevels: { type: Array, default: () => [] },

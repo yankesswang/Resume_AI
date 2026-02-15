@@ -21,6 +21,9 @@ export const useFilterStore = defineStore('filters', () => {
   const experienceRange = ref(saved?.experienceRange ?? null)
   const scoreRange = ref(saved?.scoreRange ?? null)
   const topUniversityOnly = ref(saved?.topUniversityOnly ?? false)
+  const aiTier = ref(saved?.aiTier ?? null)
+  const hardFilterPassedOnly = ref(saved?.hardFilterPassedOnly ?? false)
+  const bookmarkedOnly = ref(saved?.bookmarkedOnly ?? false)
 
   function persist() {
     localStorage.setItem(
@@ -32,11 +35,14 @@ export const useFilterStore = defineStore('filters', () => {
         experienceRange: experienceRange.value,
         scoreRange: scoreRange.value,
         topUniversityOnly: topUniversityOnly.value,
+        aiTier: aiTier.value,
+        hardFilterPassedOnly: hardFilterPassedOnly.value,
+        bookmarkedOnly: bookmarkedOnly.value,
       })
     )
   }
 
-  watch([searchName, educationLevel, selectedSkills, experienceRange, scoreRange, topUniversityOnly], persist, { deep: true })
+  watch([searchName, educationLevel, selectedSkills, experienceRange, scoreRange, topUniversityOnly, aiTier, hardFilterPassedOnly, bookmarkedOnly], persist, { deep: true })
 
   function clearAll() {
     searchName.value = ''
@@ -45,6 +51,9 @@ export const useFilterStore = defineStore('filters', () => {
     experienceRange.value = null
     scoreRange.value = null
     topUniversityOnly.value = false
+    aiTier.value = null
+    hardFilterPassedOnly.value = false
+    bookmarkedOnly.value = false
     localStorage.removeItem(STORAGE_KEY)
   }
 
@@ -55,6 +64,9 @@ export const useFilterStore = defineStore('filters', () => {
     experienceRange,
     scoreRange,
     topUniversityOnly,
+    aiTier,
+    hardFilterPassedOnly,
+    bookmarkedOnly,
     clearAll,
   }
 })

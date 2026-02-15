@@ -33,7 +33,21 @@
                   {{ candidate.english_name }}
                 </span>
               </div>
+              <div v-if="candidate.code_104" class="text-body-2 text-grey-darken-1 mt-1 d-flex align-center">
+                <v-icon size="x-small" class="mr-1">mdi-identifier</v-icon>
+                <span class="font-weight-medium">104 Code: {{ candidate.code_104 }}</span>
+                <v-btn
+                  :icon="codeCopied ? 'mdi-check' : 'mdi-content-copy'"
+                  :color="codeCopied ? 'success' : undefined"
+                  size="x-small"
+                  variant="text"
+                  density="compact"
+                  class="ml-1 copy-btn-header"
+                  @click="copyText(candidate.code_104, 'code')"
+                />
+              </div>
               <div class="text-body-1 text-grey-darken-1 mt-2">
+                <span v-if="calculatedAge != null"><strong>{{ calculatedAge }} 歲</strong> &middot; </span>
                 <strong>{{ candidate.education_level }}</strong>
                 <span v-if="candidate.school" class="ml-1">&middot; {{ candidate.school }}</span>
                 <span> &middot; <strong>{{ candidate.years_of_experience || '無工作經驗' }}</strong></span>
@@ -41,9 +55,16 @@
               <div v-if="candidate.ideal_positions?.length" class="text-body-1 text-grey-darken-1 mt-1">
                 {{ candidate.ideal_positions.join(' / ') }}
               </div>
-              <div v-if="match" class="mt-3 d-flex align-center">
+              <div v-if="match" class="mt-3 d-flex align-center flex-wrap ga-2">
                 <span class="text-body-1 font-weight-bold mr-3">Match Score:</span>
                 <ScoreBadge :score="match.overall_score" size="large" />
+                <TierBadge
+                  v-if="match.experience_detail?.tier"
+                  :tier="match.experience_detail.tier"
+                  :tier-label="match.experience_detail.tier_label"
+                  size="small"
+                  class="ml-2"
+                />
               </div>
             </div>
           </div>
@@ -53,7 +74,7 @@
         <SectionCard title="Basic Information" icon="mdi-account-details">
           <v-row>
             <DetailField label="Birth Year" :value="candidate.birth_year" />
-            <DetailField label="Age" :value="candidate.age" />
+            <DetailField label="Age" :value="calculatedAge != null ? `${calculatedAge} 歲` : candidate.age" />
             <DetailField label="Nationality" :value="candidate.nationality" />
             <DetailField label="Current Status" :value="candidate.current_status" />
             <DetailField label="Earliest Start" :value="candidate.earliest_start" />
@@ -190,11 +211,26 @@
         </SectionCard>
 
         <!-- Self Introduction -->
-        <SectionCard v-if="candidate.self_introduction" title="Self Introduction" icon="mdi-text-box">
+        <SectionCard v-if="candidate.self_introduction" title="個人簡介" icon="mdi-text-box">
           <MarkdownContent :content="candidate.self_introduction" />
         </SectionCard>
 
-        <!-- Match Analysis -->
+        <!-- Personal Motto -->
+        <SectionCard v-if="candidate.personal_motto" title="個人格言" icon="mdi-format-quote-close">
+          <MarkdownContent :content="candidate.personal_motto" />
+        </SectionCard>
+
+        <!-- Personal Traits -->
+        <SectionCard v-if="candidate.personal_traits" title="個人特色" icon="mdi-star-face">
+          <MarkdownContent :content="candidate.personal_traits" />
+        </SectionCard>
+
+        <!-- Autobiography -->
+        <SectionCard v-if="candidate.autobiography" title="自傳" icon="mdi-book-open-page-variant">
+          <MarkdownContent :content="candidate.autobiography" />
+        </SectionCard>
+
+        <!-- Match Analysis (Enhanced ScoreCard) -->
         <SectionCard title="Match Analysis" icon="mdi-chart-bar">
           <div v-if="!match" class="d-flex align-center">
             <span class="text-body-1 text-grey mr-4">No match result yet.</span>
@@ -203,51 +239,7 @@
             </v-btn>
           </div>
           <template v-else>
-            <v-row class="mb-4">
-              <v-col cols="6" sm="3">
-                <v-card variant="tonal" color="primary" class="pa-3 text-center">
-                  <div class="text-caption font-weight-bold text-uppercase">Overall</div>
-                  <div class="text-h5 font-weight-bold mt-1">{{ Math.round(match.overall_score) }}</div>
-                </v-card>
-              </v-col>
-              <v-col cols="6" sm="3">
-                <v-card variant="tonal" class="pa-3 text-center">
-                  <div class="text-caption font-weight-bold text-uppercase">Education</div>
-                  <div class="text-h5 font-weight-bold mt-1">{{ Math.round(match.education_score) }}</div>
-                </v-card>
-              </v-col>
-              <v-col cols="6" sm="3">
-                <v-card variant="tonal" class="pa-3 text-center">
-                  <div class="text-caption font-weight-bold text-uppercase">Experience</div>
-                  <div class="text-h5 font-weight-bold mt-1">{{ Math.round(match.experience_score) }}</div>
-                </v-card>
-              </v-col>
-              <v-col cols="6" sm="3">
-                <v-card variant="tonal" class="pa-3 text-center">
-                  <div class="text-caption font-weight-bold text-uppercase">Skills</div>
-                  <div class="text-h5 font-weight-bold mt-1">{{ Math.round(match.skills_score) }}</div>
-                </v-card>
-              </v-col>
-            </v-row>
-            <MarkdownContent v-if="match.analysis_text" :content="match.analysis_text" class="mb-4" />
-            <v-row v-if="match.strengths?.length || match.gaps?.length">
-              <v-col v-if="match.strengths?.length" cols="12" md="6">
-                <div class="text-subtitle-1 font-weight-bold mb-2">
-                  <v-icon color="success" size="small" class="mr-1">mdi-check-circle</v-icon>Strengths
-                </div>
-                <ul class="text-body-1 pl-4" style="line-height: 1.8">
-                  <li v-for="(s, i) in match.strengths" :key="i">{{ s }}</li>
-                </ul>
-              </v-col>
-              <v-col v-if="match.gaps?.length" cols="12" md="6">
-                <div class="text-subtitle-1 font-weight-bold mb-2">
-                  <v-icon color="error" size="small" class="mr-1">mdi-alert-circle</v-icon>Gaps
-                </div>
-                <ul class="text-body-1 pl-4" style="line-height: 1.8">
-                  <li v-for="(g, i) in match.gaps" :key="i">{{ g }}</li>
-                </ul>
-              </v-col>
-            </v-row>
+            <ScoreCard :match="match" />
             <v-btn color="primary" variant="outlined" class="mt-4" :loading="matching" @click="doMatch">
               <v-icon start>mdi-refresh</v-icon> Re-run Match
             </v-btn>
@@ -279,9 +271,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { fetchCandidate, fetchMatchResult, triggerMatch } from '../api'
 import ScoreBadge from '../components/ScoreBadge.vue'
+import TierBadge from '../components/TierBadge.vue'
+import ScoreCard from '../components/ScoreCard.vue'
 import SectionCard from '../components/SectionCard.vue'
 import DetailField from '../components/DetailField.vue'
 import MarkdownContent from '../components/MarkdownContent.vue'
@@ -291,9 +285,17 @@ const props = defineProps({
 })
 
 const candidate = ref(null)
+const calculatedAge = computed(() => {
+  const by = candidate.value?.birth_year
+  if (!by) return null
+  const year = parseInt(by, 10)
+  if (isNaN(year) || year < 1900) return null
+  return new Date().getFullYear() - year
+})
 const match = ref(null)
 const matching = ref(false)
 const nameCopied = ref(false)
+const codeCopied = ref(false)
 const linkedinCopied = ref(false)
 
 async function copyText(text, key) {
@@ -308,6 +310,7 @@ async function copyText(text, key) {
     document.body.removeChild(ta)
   }
   if (key === 'name') { nameCopied.value = true; setTimeout(() => { nameCopied.value = false }, 1500) }
+  if (key === 'code') { codeCopied.value = true; setTimeout(() => { codeCopied.value = false }, 1500) }
   if (key === 'linkedin') { linkedinCopied.value = true; setTimeout(() => { linkedinCopied.value = false }, 1500) }
 }
 

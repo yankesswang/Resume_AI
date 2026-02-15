@@ -20,6 +20,14 @@ export function triggerMatch(id) {
   return api.post(`/api/candidates/${id}/match`).then((r) => r.data)
 }
 
+export function fetchScorecard(id) {
+  return api.get(`/api/candidates/${id}/scorecard`).then((r) => r.data)
+}
+
+export function batchMatch() {
+  return api.post('/api/candidates/batch-match').then((r) => r.data)
+}
+
 export function fetchFilters() {
   return api.get('/api/filters').then((r) => r.data)
 }

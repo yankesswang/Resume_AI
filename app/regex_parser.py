@@ -1,6 +1,7 @@
 """Regex-based parser for 104.com resume markdown format."""
 
 import re
+import unicodedata
 from app.models import (
     AttachmentExtract,
     EducationExtract,
@@ -9,10 +10,44 @@ from app.models import (
     WorkExperienceExtract,
 )
 
+# CJK Radicals Supplement chars that NFKC doesn't normalize
+_CJK_RADICAL_FIXUP = str.maketrans({
+    0x2EA0: 0x6C11,  # ⺠ → 民
+    0x2ED1: 0x9577,  # ⻑ → 長
+    0x2EE9: 0x9EC3,  # ⻩ → 黃
+})
+
+
+def _normalize_cjk(text: str) -> str:
+    """Normalize CJK Compatibility Ideographs and Radicals to standard forms."""
+    text = unicodedata.normalize("NFKC", text)
+    text = text.translate(_CJK_RADICAL_FIXUP)
+    return text
+
 
 def _clean(text: str) -> str:
     """Strip whitespace and <br> tags."""
     return re.sub(r"<br\s*/?>", " ", text).strip()
+
+
+def _clean_field(text: str) -> str:
+    """Deep-clean a parsed field value: strip <br>, table junk, collapse whitespace."""
+    if not text:
+        return ""
+    # Strip <br> tags
+    text = re.sub(r"<br\s*/?>", " ", text)
+    # Strip markdown table separator rows that leaked in
+    text = re.sub(r"\|[\s\-:|]+\|", " ", text)
+    # Strip stray pipe chars
+    text = text.replace("|", " ")
+    # Strip bold markers
+    text = text.replace("**", "")
+    # Collapse whitespace (including mid-word line-break spaces like "研究 所" → "研究所")
+    # Only collapse spaces between CJK characters (not between Latin words)
+    text = re.sub(r'(?<=[\u4e00-\u9fff\u3400-\u4dbf]) +(?=[\u4e00-\u9fff\u3400-\u4dbf(（])', '', text)
+    # Collapse remaining multiple spaces to single
+    text = re.sub(r"  +", " ", text)
+    return text.strip()
 
 
 def _parse_table_rows(text: str) -> list[list[str]]:
@@ -46,7 +81,7 @@ def _kv_from_rows(rows: list[list[str]]) -> dict[str, str]:
             if re.search(r"[:：]\s*$", cell):
                 key = re.sub(r"[\s*]*[:：]\s*$", "", cell).strip()
                 key = key.replace("*", "").strip()
-                val = cells[i + 1].strip() if i + 1 < len(cells) else ""
+                val = _clean_field(cells[i + 1]) if i + 1 < len(cells) else ""
                 if key:
                     kv[key] = val
                 i += 2
@@ -123,7 +158,7 @@ def _kv_from_flat_text(section: str) -> dict[str, str]:
     i = 1
     while i < len(parts) - 1:
         key = parts[i].strip()
-        val = parts[i + 1].strip()
+        val = _clean_field(parts[i + 1])
         if key and key not in kv:
             kv[key] = val
         i += 2
@@ -136,21 +171,21 @@ def _parse_basic_info(section: str, result: dict):
     rows = _parse_table_rows(section)
     kv = _kv_from_rows(rows)
 
+    # Always try <br>-expanded version for single-cell tables where all fields
+    # are packed into one cell with <br> separators (common OCR artifact)
+    if "<br" in section:
+        br_expanded = re.sub(r"<br\s*/?>", "\n", section)
+        br_expanded = re.sub(r"\|", " ", br_expanded)
+        flat_kv_br = _kv_from_flat_text(br_expanded)
+        for k, v in flat_kv_br.items():
+            if k not in kv or not kv[k]:
+                kv[k] = v
+
     # If table parsing found no name, try flat-text fallback
     if not kv.get("姓/名") and not kv.get("姓名"):
         flat_kv = _kv_from_flat_text(section)
         # Merge: flat_kv fills in missing keys
         for k, v in flat_kv.items():
-            if k not in kv or not kv[k]:
-                kv[k] = v
-
-    # Also try flat-text parse on <br>-expanded version for single-cell tables
-    # where all fields are packed into one cell with <br> separators
-    if not kv.get("姓/名") and not kv.get("姓名"):
-        br_expanded = re.sub(r"<br\s*/?>", "\n", section)
-        br_expanded = re.sub(r"\|", " ", br_expanded)
-        flat_kv2 = _kv_from_flat_text(br_expanded)
-        for k, v in flat_kv2.items():
             if k not in kv or not kv[k]:
                 kv[k] = v
 
@@ -221,9 +256,25 @@ def _parse_basic_info(section: str, result: dict):
     result["nationality"] = kv.get("國籍", "")
     result["current_status"] = kv.get("⽬前⾝份", kv.get("目前身份", ""))
     result["earliest_start"] = kv.get("最快可上班⽇", kv.get("最快可上班日", ""))
-    result["education_level"] = kv.get("學歷", "")
-    result["school"] = kv.get("學校", "")
-    result["major"] = kv.get("科系", "")
+    # Education level — may be contaminated with "學校: ..." suffix
+    edu_level = kv.get("學歷", "")
+    edu_level_match = re.match(r"^(博士|碩士|大學|四技|二技|專科|高中)", edu_level)
+    result["education_level"] = edu_level_match.group(1) if edu_level_match else edu_level
+
+    # School — may contain "高中 -> 大學" arrow; take the last (highest) one
+    school = kv.get("學校", "")
+    # Strip <br> tags that leak from OCR
+    school = re.sub(r"<br\s*/?>", " ", school).strip()
+    if "->" in school or "→" in school:
+        school = re.split(r"\s*(?:->|→)\s*", school)[-1].strip()
+    # Collapse spaces between CJK chars (e.g. "臺灣 大學" → "臺灣大學")
+    school = re.sub(r'(?<=[\u4e00-\u9fff\u3400-\u4dbf]) +(?=[\u4e00-\u9fff\u3400-\u4dbf])', '', school)
+    result["school"] = school
+
+    # Major — may contain backslash separators from OCR
+    major = kv.get("科系", "")
+    major = major.replace("\\", "／")
+    result["major"] = major
     result["military_status"] = kv.get("兵役狀況", "")
     result["desired_salary"] = kv.get("希望薪資待遇", "")
     result["desired_industry"] = kv.get("希望從事產業", "")
@@ -311,7 +362,7 @@ def _parse_contact(section: str, result: dict):
         i = 1
         while i < len(parts) - 1:
             key = parts[i].strip()
-            val = parts[i + 1].strip()
+            val = _clean_field(parts[i + 1])
             if key and key not in kv:
                 kv[key] = val
             i += 2
@@ -451,11 +502,28 @@ def _parse_work_experience(section: str) -> list[WorkExperienceExtract]:
 
 
 def _parse_education(section: str) -> list[EducationExtract]:
-    """Parse education entries from the 教育背景 subsection."""
+    """Parse education entries from the 教育背景 subsection.
+
+    The education table typically has columns: #, 學校, 科系, 學歷, 就學期間, 地區, 狀況.
+    We validate parsed rows to avoid picking up work experience or other data
+    that may follow the 教育背景 heading in the markdown.
+    """
+    # Truncate at the next known section boundary to avoid parsing unrelated data
+    for boundary in ("求職條件", "才能專", "自我介紹", "⾃我介紹", "推薦人", "推薦⼈", "附件"):
+        idx = section.find(boundary)
+        if idx != -1:
+            section = section[:idx]
+
     rows = _parse_table_rows(section)
     entries = []
 
+    # Known work-experience keys that should NOT appear as school names
+    _work_keys = {"產業類別", "公司規模", "職務類別", "管理責任", "職務名稱",
+                  "⼯作內容", "工作內容", "⼯作技能", "工作技能"}
+
     for cells in rows:
+        if not cells:
+            continue
         # Skip header row containing "學校" as header
         if any(c.strip() == "學校" for c in cells):
             continue
@@ -463,17 +531,42 @@ def _parse_education(section: str) -> list[EducationExtract]:
             continue
 
         # Look for numbered rows: "1.", "2.", etc.
-        joined = " ".join(cells)
         if not re.search(r"^\d+\.", cells[0].strip()):
             continue
 
         seq_str = cells[0].strip().rstrip(".")
-        school = cells[1].strip() if len(cells) > 1 else ""
-        department = cells[2].strip() if len(cells) > 2 else ""
-        degree = cells[3].strip() if len(cells) > 3 else ""
-        period = cells[4].strip() if len(cells) > 4 else ""
-        region = cells[5].strip() if len(cells) > 5 else ""
-        status = cells[6].strip() if len(cells) > 6 else ""
+        school = _clean_field(cells[1]) if len(cells) > 1 else ""
+        department = _clean_field(cells[2]) if len(cells) > 2 else ""
+        degree = _clean_field(cells[3]) if len(cells) > 3 else ""
+        period = _clean_field(cells[4]) if len(cells) > 4 else ""
+        region = _clean_field(cells[5]) if len(cells) > 5 else ""
+        status = _clean_field(cells[6]) if len(cells) > 6 else ""
+
+        # --- Validation: skip rows that look like work experience data ---
+        # Skip if school contains a work-experience key (e.g. "職務名稱:")
+        if any(k in school for k in _work_keys):
+            continue
+        # Skip if school contains a date range pattern (work experience)
+        if re.search(r"\d{4}/\d{2}/\d{2}\s*~", school):
+            continue
+        # Skip if school is empty and department is also empty
+        if not school and not department:
+            continue
+        # Skip if school contains `:` or `：` (likely a key:value pair, not a school)
+        if re.search(r"[:：]$", school.strip()):
+            continue
+
+        # Handle merged format: "大學名科系名學歷" all in school cell
+        # Spaces may be collapsed by _clean_field so also match without spaces
+        if not department and not degree:
+            merged_match = re.match(
+                r"^(.+?(?:大學|學院|科技大學|科大|University|College))\s*(.+?(?:[系所學程班科]+|Engineering|Science))\s*(博士|碩士|大學|四技|二技|專科|高中|高職)$",
+                school,
+            )
+            if merged_match:
+                school = merged_match.group(1)
+                department = merged_match.group(2)
+                degree = merged_match.group(3)
 
         date_start, date_end = "", ""
         period_match = re.match(r"(\d{4}/\d{2}/\d{2})\s*~\s*(\d{4}/\d{2}/\d{2})", period)
@@ -626,6 +719,8 @@ def _parse_attachments_and_refs(text: str) -> tuple[list[ReferenceExtract], list
 
 def parse_resume_markdown(markdown: str) -> ResumeExtract:
     """Parse a 104.com format resume markdown into structured data using regex."""
+    # Ensure CJK compatibility chars are normalized before parsing
+    markdown = _normalize_cjk(markdown)
     sections = _split_sections(markdown)
     result: dict = {
         "name": "", "english_name": "", "code_104": "", "birth_year": "", "age": "",
@@ -637,7 +732,8 @@ def parse_resume_markdown(markdown: str) -> ResumeExtract:
         "mobile2": "", "phone_home": "", "phone_work": "", "district": "",
         "mailing_address": "", "work_type": "", "shift_preference": "",
         "remote_work_preference": "", "skills_text": "", "skill_tags": [],
-        "self_introduction": "", "work_experiences": [], "education": [],
+        "self_introduction": "", "personal_motto": "", "personal_traits": "",
+        "autobiography": "", "work_experiences": [], "education": [],
         "references": [], "attachments": [],
     }
 
@@ -682,12 +778,26 @@ def parse_resume_markdown(markdown: str) -> ResumeExtract:
     if work_section:
         result["work_experiences"] = _parse_work_experience(work_section)
 
-    # Education — embedded in work section or as a separate heading
-    # The education table may appear within the work experience section text
-    edu_text = work_section or ""
-    if "教育背景" in edu_text:
-        edu_start = edu_text.index("教育背景")
-        edu_text = edu_text[edu_start:]
+    # Education — try standalone section first, then embedded in work section
+    edu_text = sections.get("教育背景", "")
+    if not edu_text:
+        # Try extracting from raw markdown as a standalone block
+        edu_start_match = re.search(r"^#{1,4}\s+教育背景", markdown, re.MULTILINE)
+        if edu_start_match:
+            edu_end_match = re.search(
+                r"^#{1,4}\s+(?:求職條件|才能專[⻑長]|⾃我介紹|自我介紹|推薦[⼈人]|附件)",
+                markdown[edu_start_match.end():], re.MULTILINE,
+            )
+            if edu_end_match:
+                edu_text = markdown[edu_start_match.end():edu_start_match.end() + edu_end_match.start()]
+            else:
+                edu_text = markdown[edu_start_match.end():]
+    if not edu_text:
+        # Fallback: look inside work section text
+        combined = work_section or ""
+        if "教育背景" in combined:
+            edu_start = combined.index("教育背景")
+            edu_text = combined[edu_start:]
     result["education"] = _parse_education(edu_text)
 
     # Job preferences — 求職條件 table may also be in the education area
@@ -715,6 +825,53 @@ def parse_resume_markdown(markdown: str) -> ResumeExtract:
         )
         if intro_match:
             result["self_introduction"] = intro_match.group(1).strip()
+
+    # Personal motto, traits, autobiography — search across raw markdown and basic section
+    _personal_source = markdown
+    # 個人格言
+    motto_match = re.search(
+        r"個人格言\*{0,2}[:：]\*{0,2}\s*([\s\S]*?)(?=個人特色|個人連結|自傳|#|$)",
+        _personal_source,
+    )
+    if motto_match:
+        result["personal_motto"] = motto_match.group(1).strip()
+
+    # 個人特色
+    traits_match = re.search(
+        r"個人特色\*{0,2}[:：]\*{0,2}\s*([\s\S]*?)(?=個人連結|自傳|#|$)",
+        _personal_source,
+    )
+    if traits_match:
+        result["personal_traits"] = traits_match.group(1).strip()
+
+    # 自傳 — may appear as a section heading or inline
+    auto_section = sections.get("自傳", "")
+    if not auto_section:
+        auto_section = sections.get("英文自傳", "")
+    if auto_section:
+        result["autobiography"] = auto_section.strip()
+    else:
+        # Try inline pattern
+        auto_match = re.search(
+            r"自傳\*{0,2}[:：]\*{0,2}\s*([\s\S]*?)(?=個人連結|推薦人|附件|#|$)",
+            _personal_source,
+        )
+        if auto_match:
+            result["autobiography"] = auto_match.group(1).strip()
+    # Also check under 自我介紹 section — may contain 英文自傳 or 自傳 sub-headings
+    if not result["autobiography"] and intro:
+        auto_sub = re.search(
+            r"(?:英文)?自傳\s*([\s\S]*?)(?=#{1,4}\s|$)",
+            intro,
+        )
+        if auto_sub:
+            result["autobiography"] = auto_sub.group(1).strip()
+    # Clean up autobiography: strip trailing table rows that leaked in
+    if result["autobiography"]:
+        lines = result["autobiography"].split("\n")
+        while lines and (lines[-1].strip().startswith("|") or not lines[-1].strip()):
+            lines.pop()
+        result["autobiography"] = "\n".join(lines).strip()
 
     # References and attachments — at the end of the document
     # Find the section whose TABLE rows contain 推薦人 / 附件 (not just mention in text)
@@ -762,6 +919,9 @@ def parse_resume_markdown(markdown: str) -> ResumeExtract:
         skills_text=result["skills_text"],
         skill_tags=result["skill_tags"],
         self_introduction=result["self_introduction"],
+        personal_motto=result["personal_motto"],
+        personal_traits=result["personal_traits"],
+        autobiography=result["autobiography"],
         work_experiences=result["work_experiences"],
         education=result["education"],
         references=result["references"],
