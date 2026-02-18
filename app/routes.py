@@ -1,15 +1,19 @@
+import csv
+import io
 import json
 import logging
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from app.database import (
     ensure_job_requirement,
     get_all_candidates_summary,
     get_candidate_detail,
+    get_candidates_export_data,
     get_filter_options,
     get_job_requirement,
     get_match_result,
@@ -17,6 +21,10 @@ from app.database import (
 )
 from app.llm import match_candidate_to_job
 from app.models import EnhancedMatchResult, MatchResultExtract, ResumeExtract
+
+
+class ExportRequest(BaseModel):
+    candidate_ids: list[int]
 from app.parser_service import ingest_existing_markdown, ingest_pdf, reparse_existing
 from app.scoring.pipeline import run_full_scoring
 
@@ -300,3 +308,80 @@ async def ingest_markdown(request: Request):
         return HTMLResponse("Markdown file not found", status_code=400)
     candidate_id = ingest_existing_markdown(str(md_path))
     return RedirectResponse(url=f"/candidates/{candidate_id}", status_code=303)
+
+
+# --- Export API ---
+
+@router.post("/api/export/candidates")
+async def api_export_candidates(body: ExportRequest):
+    """Return full candidate data + scores for given IDs (bookmarks page)."""
+    data = get_candidates_export_data(body.candidate_ids)
+    for c in data:
+        c["photo_url"] = _resolve_photo_url(c)
+    return data
+
+
+@router.post("/api/export/candidates/csv")
+async def api_export_candidates_csv(body: ExportRequest):
+    """Return a downloadable CSV of candidate data with BOM for Excel Chinese support."""
+    data = get_candidates_export_data(body.candidate_ids)
+
+    output = io.StringIO()
+    output.write("\ufeff")  # UTF-8 BOM for Excel
+    writer = csv.writer(output)
+
+    headers = [
+        "ID", "姓名", "英文名", "104代碼", "年齡", "學歷", "學校", "科系",
+        "年資", "技能", "Email", "手機", "期望薪資",
+        "總分", "學歷分", "經歷分", "技能分", "AI分", "工程分", "加權總分",
+        "AI Tier", "優勢", "不足", "分析",
+        "工作經歷",
+    ]
+    writer.writerow(headers)
+
+    for c in data:
+        # Format work experiences as a single string
+        work_lines = []
+        for w in c.get("work_experiences", []):
+            line = f"{w.get('company_name', '')} - {w.get('job_title', '')} ({w.get('date_start', '')}~{w.get('date_end', '')})"
+            work_lines.append(line)
+
+        tier_info = ""
+        exp_detail = c.get("experience_detail")
+        if isinstance(exp_detail, dict) and exp_detail.get("tier"):
+            tier_info = f"T{exp_detail['tier']} {exp_detail.get('tier_label', '')}"
+
+        writer.writerow([
+            c.get("id", ""),
+            c.get("name", ""),
+            c.get("english_name", ""),
+            c.get("code_104", ""),
+            c.get("age", ""),
+            c.get("education_level", ""),
+            c.get("school", ""),
+            c.get("major", ""),
+            c.get("years_of_experience", ""),
+            ", ".join(c.get("skill_tags", [])),
+            c.get("email", ""),
+            c.get("mobile1", ""),
+            c.get("desired_salary", ""),
+            c.get("overall_score", ""),
+            c.get("education_score", ""),
+            c.get("experience_score", ""),
+            c.get("skills_score", ""),
+            c.get("s_ai", ""),
+            c.get("m_eng", ""),
+            c.get("s_total", ""),
+            tier_info,
+            " | ".join(c.get("strengths", [])),
+            " | ".join(c.get("gaps", [])),
+            c.get("analysis_text", ""),
+            "\n".join(work_lines),
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=interested_candidates.csv"},
+    )

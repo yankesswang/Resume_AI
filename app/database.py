@@ -551,6 +551,69 @@ def get_job_requirement(job_id: int) -> dict | None:
     return dict(row)
 
 
+def get_candidates_export_data(candidate_ids: list[int]) -> list[dict]:
+    """Fetch candidate + match data for export, sorted by overall_score DESC."""
+    if not candidate_ids:
+        return []
+    conn = _connect()
+    placeholders = ",".join("?" for _ in candidate_ids)
+    rows = conn.execute(
+        f"""SELECT c.id, c.name, c.english_name, c.code_104, c.age, c.birth_year,
+                   c.education_level, c.school, c.major, c.years_of_experience,
+                   c.skill_tags, c.email, c.mobile1, c.desired_salary,
+                   c.desired_job_categories, c.ideal_positions,
+                   c.photo_path, c.source_md_path,
+                   m.overall_score, m.education_score, m.experience_score,
+                   m.skills_score, m.s_ai, m.m_eng, m.s_total,
+                   m.strengths, m.gaps, m.analysis_text,
+                   m.experience_detail, m.tags, m.passed_hard_filter
+            FROM candidates c
+            LEFT JOIN match_results m ON c.id = m.candidate_id
+            WHERE c.id IN ({placeholders})
+            ORDER BY m.overall_score DESC NULLS LAST""",
+        candidate_ids,
+    ).fetchall()
+
+    # Fetch education and work experiences
+    edu_rows = conn.execute(
+        f"SELECT candidate_id, school, department, degree_level, date_start, date_end "
+        f"FROM education WHERE candidate_id IN ({placeholders}) ORDER BY candidate_id, seq",
+        candidate_ids,
+    ).fetchall()
+    work_rows = conn.execute(
+        f"SELECT candidate_id, company_name, job_title, date_start, date_end, duration, industry "
+        f"FROM work_experiences WHERE candidate_id IN ({placeholders}) ORDER BY candidate_id, seq",
+        candidate_ids,
+    ).fetchall()
+    conn.close()
+
+    edu_map: dict[int, list[dict]] = {}
+    for er in edu_rows:
+        cid = er["candidate_id"]
+        edu_map.setdefault(cid, []).append(dict(er))
+
+    work_map: dict[int, list[dict]] = {}
+    for wr in work_rows:
+        cid = wr["candidate_id"]
+        work_map.setdefault(cid, []).append(dict(wr))
+
+    results = []
+    for r in rows:
+        d = dict(r)
+        for json_field in ("skill_tags", "desired_job_categories", "ideal_positions"):
+            d[json_field] = json.loads(d[json_field] or "[]")
+        for json_field in ("strengths", "gaps", "tags"):
+            d[json_field] = json.loads(d[json_field] or "[]")
+        if d.get("experience_detail"):
+            d["experience_detail"] = json.loads(d["experience_detail"])
+        if d.get("passed_hard_filter") is not None:
+            d["passed_hard_filter"] = bool(d["passed_hard_filter"])
+        d["education"] = edu_map.get(d["id"], [])
+        d["work_experiences"] = work_map.get(d["id"], [])
+        results.append(d)
+    return results
+
+
 def get_filter_options() -> dict:
     """Return distinct filter options for the frontend."""
     conn = _connect()
