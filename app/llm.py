@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -163,38 +164,71 @@ def match_candidate_to_job(candidate: ResumeExtract, job: dict) -> MatchResultEx
 
 # --- Enhanced LLM functions for the screening funnel ---
 
+# Set to True to include the raw resume text in the LLM prompt.
+# Toggling this changes TIER_CLASSIFY_PROMPT_MD5, which auto-invalidates the DB cache.
+_INCLUDE_RAW_MARKDOWN = False
+
 _TIER_CLASSIFY_PROMPT = """\
-You are an AI recruitment expert. Analyze this candidate's work experience and classify their AI engineering depth into one of 4 tiers:
+You are an AI recruitment expert. Read the candidate's work experience, skills, and resume excerpt, \
+then classify their AI engineering depth into one of 3 tiers based on EVIDENCE DEPTH, not keyword frequency.
 
-Tier 1 (Wrapper/60pts): Only calls OpenAI/Claude API, writes prompts, builds simple chatbots with Streamlit/Gradio.
-Tier 2 (RAG Architect/80pts): Designs RAG pipelines, uses vector databases, implements hybrid search, function calling, agent frameworks.
-Tier 3 (Model Tuner/90pts): Fine-tunes models with PyTorch/HuggingFace, uses LoRA/QLoRA/PEFT, handles quantization, understands training dynamics.
-Tier 4 (Inference Ops/100pts): Optimizes inference with vLLM/TensorRT-LLM, manages CUDA/GPU memory, implements Flash Attention, handles high-throughput serving.
+Tier 1 – Wrapper (base 60):
+  Evidence: Only calls OpenAI/Claude/Gemini APIs. Writes prompts. Builds demos with Streamlit/Gradio/Chainlit. \
+No model internals touched.
+  Key signal: "Used GPT-4 to build X", "prompt engineering", chatbot demos.
 
-Depth Check: Is this candidate just calling APIs (Wrapper) or actually building/optimizing models?
-Research vs Engineering: Do they mention paper implementations OR solving OOM/latency issues?
-Metric Check (防吹牛): Do they provide specific quantified metrics (latency reduction %, accuracy improvement)?
+Tier 2 – RAG Architect (base 80):
+  Evidence: Designed full RAG/Agent pipelines, chose & tuned vector DBs, implemented hybrid search / \
+reranking / HyDE, built multi-step agent loops with LangGraph / LlamaIndex. Understands retrieval quality tradeoffs.
+  Key signal: production RAG deployed, evaluation metrics (Recall@K, MRR).
 
-Return ONLY valid JSON:
+Tier 3 – AI Expert (base 100):
+  Evidence: Trained or fine-tuned models (LoRA, QLoRA, SFT, RLHF, DPO), customised training loops, \
+loss functions; OR optimised inference (vLLM, TensorRT-LLM, CUDA kernels, Flash Attention, KV-cache tuning); \
+OR published ML research at a peer-reviewed venue.
+  Key signal: GPU hours, model size, training loss curves, inference latency numbers, paper citations, \
+production serving metrics.
+
+Anti-inflation rules (apply before deciding):
+  - Listing "PyTorch" in skills with zero training context → max Tier 2
+  - "Used HuggingFace to load a model" without fine-tuning → max Tier 2
+  - Vague "deep learning project" with no metrics or architecture details → Tier 1 or 2
+  - ICASSP / NeurIPS / CVPR / ICLR / ACL paper (even as co-author) → Tier 3 minimum
+
+Return ONLY valid JSON (no markdown fences, no extra text):
 {
-  "tier": 1,
-  "tier_label": "Wrapper",
-  "evidence": ["key phrase 1", "key phrase 2"],
-  "analysis": "1-2 sentences in Traditional Chinese explaining the classification",
-  "tech_stack_score": 0.0,
-  "complexity_score": 0.0,
-  "metric_score": 0.0
-}
-
-No markdown fences."""
+  "tier": 2,
+  "tier_label": "RAG Architect",
+  "confidence": 0.85,
+  "evidence": ["phrase from resume supporting this tier"],
+  "anti_inflation_flags": ["PyTorch listed but no training details found"],
+  "reasoning": "1-2 sentences in Traditional Chinese"
+}"""
 
 
-def classify_ai_tier(work_experiences: list[dict], skill_tags: list[str]) -> dict:
-    """Use LLM to classify candidate into the 4-tier AI pyramid."""
+# Prompt version: MD5 of system prompt text + include-raw-markdown flag.
+# Changes automatically whenever the prompt or _INCLUDE_RAW_MARKDOWN is edited.
+TIER_CLASSIFY_PROMPT_MD5 = hashlib.md5(
+    (_TIER_CLASSIFY_PROMPT + str(_INCLUDE_RAW_MARKDOWN)).encode()
+).hexdigest()[:12]
+
+
+def classify_ai_tier(
+    work_experiences: list[dict],
+    skill_tags: list[str],
+    raw_markdown: str = "",
+) -> dict:
+    """Use LLM to classify candidate into the 3-tier AI pyramid."""
     exp_text = json.dumps(work_experiences, ensure_ascii=False)
     skills_text = ", ".join(skill_tags) if skill_tags else "None"
 
-    user_content = f"=== 工作經驗 ===\n{exp_text}\n\n=== 技能標籤 ===\n{skills_text}"
+    user_content = (
+        f"=== 工作經驗 ===\n{exp_text}\n\n"
+        f"=== 技能標籤 ===\n{skills_text}\n\n"
+    )
+    if _INCLUDE_RAW_MARKDOWN:
+        md_excerpt = (raw_markdown or "")[:3000]
+        user_content += f"=== 履歷原文摘錄 (前3000字) ===\n{md_excerpt}"
     user_content = _truncate_to_fit(_TIER_CLASSIFY_PROMPT, user_content)
 
     messages = [
@@ -202,14 +236,14 @@ def classify_ai_tier(work_experiences: list[dict], skill_tags: list[str]) -> dic
         {"role": "user", "content": user_content},
     ]
 
-    raw = _chat(messages, temperature=0.2, max_tokens=1024)
+    raw = _chat(messages, temperature=0.1, max_tokens=512)
     cleaned = _strip_fences(raw)
 
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         logger.error("LLM tier classification returned invalid JSON: %s", cleaned[:500])
-        return {"tier": 1, "tier_label": "Wrapper", "evidence": [], "analysis": "分類失敗"}
+        return {"tier": 1, "tier_label": "Wrapper", "evidence": [], "reasoning": "分類失敗"}
 
 
 _SCORECARD_PROMPT = """\

@@ -148,7 +148,7 @@ class EnhancedMatchResult(BaseModel):
     # Final scores
     overall_score: float = 0.0
     s_ai: float = 0.0             # AI pyramid score (0-100)
-    m_eng: float = 0.0            # Engineering coefficient (0-0.5)
+    m_eng: float = 0.0            # Engineering coefficient (0-0.7)
     s_total: float = 0.0          # Legacy: S_AI * (1 + M_Eng)
 
     # Legacy scores for backward compat

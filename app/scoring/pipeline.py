@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from typing import Any
 
 from app.models import EnhancedMatchResult
@@ -27,9 +28,28 @@ from app.scoring.skills import verify_skills
 logger = logging.getLogger(__name__)
 
 
+def _classify_tier(
+    work_experiences: list[dict],
+    skill_tags: list[str],
+    raw_markdown: str,
+    candidate_id: int | None,
+    db_conn: sqlite3.Connection | None,
+):
+    """Try LLM-based tier classification; fall back to keyword-only on any error."""
+    try:
+        from app.scoring.experience import classify_experience_tier_llm
+        return classify_experience_tier_llm(
+            work_experiences, skill_tags, raw_markdown, candidate_id, db_conn
+        )
+    except Exception as e:
+        logger.warning("LLM tier classify failed, using keyword fallback: %s", e)
+        return classify_experience_tier(work_experiences, skill_tags, raw_markdown)
+
+
 def run_full_scoring(
     candidate_detail: dict[str, Any],
     job_data: dict[str, Any],
+    db_conn: sqlite3.Connection | None = None,
 ) -> EnhancedMatchResult:
     """Run the complete scoring pipeline on a candidate.
 
@@ -60,6 +80,14 @@ def run_full_scoring(
         else:
             edu_extracts.append(ed)
 
+    # Fallback: if no education table rows, use flat candidate fields
+    if not edu_extracts and candidate_detail.get("school"):
+        edu_extracts = [EducationExtract(
+            school=candidate_detail.get("school", ""),
+            department=candidate_detail.get("major", ""),
+            degree_level=candidate_detail.get("education_level", ""),
+        )]
+
     # --- Step 1: Hard filter ---
     hard_filter_config = job_data.get("hard_filters", {})
     if hard_filter_config:
@@ -83,14 +111,17 @@ def run_full_scoring(
     # --- Step 2: Education scoring ---
     edu_detail = score_education(edu_extracts, raw_markdown)
 
-    # --- Step 3: Experience tier classification ---
-    exp_detail = classify_experience_tier(work_experiences, skill_tags, raw_markdown)
+    # --- Step 3: Experience tier classification (LLM with keyword floor) ---
+    exp_detail = _classify_tier(
+        work_experiences, skill_tags, raw_markdown,
+        candidate_detail.get("id"), db_conn,
+    )
 
     # --- Step 4: Engineering maturity ---
     eng_detail = score_engineering_maturity(work_experiences, skill_tags, raw_markdown)
 
     # --- Step 5: Skill verification ---
-    skill_detail = verify_skills(skill_tags, work_experiences)
+    skill_detail = verify_skills(skill_tags, work_experiences, raw_markdown)
 
     # --- Step 6: Semantic similarity (optional, embedding-based) ---
     semantic_sim = 0.0
@@ -117,8 +148,8 @@ def run_full_scoring(
     W_EDU = 0.15   # Education background
     W_SKL = 0.10   # Skill verification
 
-    # Normalize engineering m_eng (0-0.5) to 0-100 scale
-    eng_score_normalized = min(eng_detail.m_eng / 0.5, 1.0) * 100.0
+    # Normalize engineering m_eng (0-0.7) to 0-100 scale (cap raised in v2)
+    eng_score_normalized = min(eng_detail.m_eng / 0.7, 1.0) * 100.0
     # Normalize semantic similarity (0-1) to 0-100 scale
     sem_score_normalized = semantic_sim * 100.0
 
@@ -178,8 +209,7 @@ def _generate_tags(exp_detail, eng_detail, skill_detail) -> list[str]:
     tier_tags = {
         1: "#API-Wrapper",
         2: "#RAG-Expert",
-        3: "#Model-Tuner",
-        4: "#Inference-Ops",
+        3: "#AI-Expert",
     }
     tags.append(tier_tags.get(exp_detail.tier, "#Unknown"))
 
@@ -276,7 +306,7 @@ def _build_analysis_text(candidate, edu, exp, eng, skill, overall, s_ai, m_eng, 
     lines.append("")
     lines.append(f"**總分：{overall}/100**")
     lines.append(f"- AI經驗深度 (35%): {round(s_ai * 0.35, 1)}")
-    lines.append(f"- 工程落地 (20%): {round(min(m_eng / 0.5, 1.0) * 100 * 0.20, 1)}")
+    lines.append(f"- 工程落地 (20%): {round(min(m_eng / 0.7, 1.0) * 100 * 0.20, 1)}")
     lines.append(f"- 教育背景 (15%): {round(edu.score * 0.15, 1)}")
     lines.append(f"- 技能驗證 (10%): {round(skill.score * 0.10, 1)}")
     lines.append(f"- 語意匹配 (20%): {round(semantic_sim * 100 * 0.20, 1)}")

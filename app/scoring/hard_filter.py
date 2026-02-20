@@ -26,13 +26,13 @@ def apply_hard_filters(
         all_text_parts.append(we.get("job_skills", "") or "")
     combined = " ".join(all_text_parts).lower()
 
-    # Check required_skills (ALL must be present)
+    # Check required_skills (ALL must be present) — backward-compatible hard gate
     required_skills = hard_filter_config.get("required_skills", [])
     for skill in required_skills:
         if skill.lower() not in combined:
             failures.append(f"Missing required skill: {skill}")
 
-    # Check required_frameworks (at least ONE must be present)
+    # Check required_frameworks (at least ONE must be present) — backward-compat
     required_frameworks = hard_filter_config.get("required_frameworks", [])
     if required_frameworks:
         found_any = any(fw.lower() in combined for fw in required_frameworks)
@@ -41,13 +41,42 @@ def apply_hard_filters(
                 f"Missing required framework (need at least one of: {', '.join(required_frameworks)})"
             )
 
-    # Check required_keywords (at least ONE must be present)
+    # Check required_keywords (at least ONE must be present) — backward-compat
     required_keywords = hard_filter_config.get("required_keywords", [])
     if required_keywords:
         found_any = any(kw.lower() in combined for kw in required_keywords)
         if not found_any:
             failures.append(
                 f"Missing required keyword (need at least one of: {', '.join(required_keywords)})"
+            )
+
+    # Check must_have_groups: each group needs at least min_matches hits.
+    # Replaces ALL-must-match with flexible group-based filtering, e.g.:
+    #   Group A (≥1): PyTorch / TensorFlow
+    #   Group B (≥1): LLM / Transformer / Attention / BERT
+    #   Group C (≥1): RAG / Fine-tuning / Inference serving
+    must_have_groups = hard_filter_config.get("must_have_groups", [])
+    for group in must_have_groups:
+        group_name = group.get("name", "Group")
+        group_skills = group.get("skills", [])
+        min_matches = int(group.get("min_matches", 1))
+        hits = sum(1 for skill in group_skills if skill.lower() in combined)
+        if hits < min_matches:
+            failures.append(
+                f"Group '{group_name}': need {min_matches} of "
+                f"[{', '.join(group_skills)}], found {hits}"
+            )
+
+    # Check required_skills_threshold: N-of-M matching (e.g. 2 of 5 keywords)
+    threshold_config = hard_filter_config.get("required_skills_threshold", {})
+    if threshold_config:
+        threshold_skills = threshold_config.get("skills", [])
+        min_matches = int(threshold_config.get("min_matches", 1))
+        hits = sum(1 for skill in threshold_skills if skill.lower() in combined)
+        if hits < min_matches:
+            failures.append(
+                f"Skills threshold: need {min_matches} of {len(threshold_skills)} "
+                f"[{', '.join(threshold_skills)}], found {hits}"
             )
 
     return len(failures) == 0, failures

@@ -1,17 +1,18 @@
 """Education scoring module.
 
 Hybrid scoring based on grade_calculator approach:
-- School: A=10, B=3, C=0
+- School: S(PhD)=15, A=10, B=3, C=0
 - Major:  Tier1=10, Tier2=3, Other=0
-- Base score per degree = school + major (max 20)
-- Weighted: bachelor * 0.7 + master * 0.3
-- Thesis bonus: +5 for AI keywords, +5 for top venue
-- Normalized to 0-100 scale
+- Base score per degree = school + major (max 25 for Tier S)
+- Weighted: bachelor * 0.7 + master * 0.3 (or bachelor * 0.9 if no master)
+- Thesis bonus: +2.5 for AI keywords, +2.5 for top venue (max +5, outside cap)
+- Normalized to 0-100 scale (denominator=24), base capped at 95
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from app.models import EducationExtract, EducationLevelDetail, EducationScoreDetail
 
@@ -66,7 +67,8 @@ THESIS_AI_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 TOP_VENUE_KEYWORDS = re.compile(
-    r"NeurIPS|NIPS|ICLR|ICML|CVPR|ICCV|ECCV|ACL|EMNLP|AAAI|IJCAI",
+    r"NeurIPS|NIPS|ICLR|ICML|CVPR|ICCV|ECCV|ACL|EMNLP|AAAI|IJCAI|"
+    r"ICASSP|INTERSPEECH|ASRU|SLT|SIGKDD|KDD|RecSys|WSDM|CIKM|COLING|NAACL",
     re.IGNORECASE,
 )
 
@@ -76,29 +78,38 @@ _MASTER_KEYWORDS = ("碩士", "碩", "master", "mba", "m.s.", "m.a.", "graduate"
 _PHD_KEYWORDS = ("博士", "phd", "doctorate", "ph.d.")
 
 
-def _school_points(school: str) -> tuple[str, float]:
-    """Return (tier, points) for a school. A=10, B=3, C=0."""
-    if any(kw.lower() in school.lower() for kw in US_GRADE_A):
+def _nfkc(s: str) -> str:
+    """Normalize CJK compatibility variants (e.g. ⼤ U+2F23 → 大 U+5927)."""
+    return unicodedata.normalize("NFKC", s)
+
+
+def _school_points(school: str, is_phd: bool = False) -> tuple[str, float]:
+    """Return (tier, points) for a school. S(PhD)=15, A=10, B=3, C=0."""
+    if is_phd:
+        return "S", 15.0
+    school_n = _nfkc(school)
+    if any(kw.lower() in school_n.lower() for kw in US_GRADE_A):
         return "A", 10.0
-    if TW_GRADE_A_PATTERN.search(school):
+    if TW_GRADE_A_PATTERN.search(school_n):
         return "A", 10.0
-    if TW_GRADE_B_PATTERN.search(school):
+    if TW_GRADE_B_PATTERN.search(school_n):
         return "B", 3.0
     return "C", 0.0
 
 
 def _major_points(department: str) -> tuple[str, float]:
     """Return (relevance_tier, points) for a major. Tier1=10, Tier2=3, Other=0."""
-    if TIER1_MAJOR.search(department):
+    dept_n = _nfkc(department)
+    if TIER1_MAJOR.search(dept_n):
         return "Tier1", 10.0
-    if TIER2_MAJOR.search(department):
+    if TIER2_MAJOR.search(dept_n):
         return "Tier2", 3.0
     return "Other", 0.0
 
 
 def _degree_level(degree_str: str) -> str:
     """Classify degree string into phd/master/bachelor."""
-    dl = degree_str.lower()
+    dl = _nfkc(degree_str).lower()
     if any(k in dl for k in _PHD_KEYWORDS):
         return "phd"
     if any(k in dl for k in _MASTER_KEYWORDS):
@@ -106,11 +117,13 @@ def _degree_level(degree_str: str) -> str:
     return "bachelor"
 
 
-def _score_one(ed: EducationExtract) -> EducationLevelDetail:
-    """Score a single education entry, returning detail with points."""
-    s_tier, s_pts = _school_points(ed.school)
+def _score_one(ed: EducationExtract) -> tuple[EducationLevelDetail, str]:
+    """Score a single education entry, returning (detail, degree_level)."""
+    level = _degree_level(ed.degree_level)
+    is_phd = (level == "phd")
+    s_tier, s_pts = _school_points(ed.school, is_phd=is_phd)
     m_tier, m_pts = _major_points(ed.department)
-    return EducationLevelDetail(
+    detail = EducationLevelDetail(
         school=ed.school,
         school_tier=s_tier,
         school_points=s_pts,
@@ -119,6 +132,7 @@ def _score_one(ed: EducationExtract) -> EducationLevelDetail:
         major_points=m_pts,
         base_score=s_pts + m_pts,
     )
+    return detail, level
 
 
 def score_education(
@@ -127,34 +141,52 @@ def score_education(
 ) -> EducationScoreDetail:
     """Score education using hybrid bachelor/master weighting.
 
-    Approach from grade_calculator.py:
-    - bachelor weight: 0.7, master weight: 0.3
-    - Each degree: school (A=10/B=3/C=0) + major (T1=10/T2=3/Other=0) = max 20
-    - Hybrid = bachelor_base * 0.7 + master_base * 0.3 (max 20)
-    - PhD holders get master weight bumped (treated as master with higher weight)
-    - Thesis bonus: +5 for AI keywords, +5 for top venue
-    - Final normalized to 0-100: (hybrid + thesis_bonus) / 20 * 100
+    v2 optimizations:
+    - PhD degree → Tier S school points (15 vs Tier A's 10), surfaces PhD premium
+    - Bachelor-only: hybrid = b_score * 0.9 (was 0.7), keeps reasonable floor
+    - Denominator raised 20 → 24: Tier A+Tier1 master now scores ~83 (not 100)
+      so only top-tier academics with publications can reach 95–100
+    - Thesis bonus decoupled from cap: base capped at 95, thesis adds up to 5 pts
+      (+2.5 for AI keywords, +2.5 for top-venue publication)
     """
     if not education_list:
         return EducationScoreDetail(score=0.0)
 
-    # Separate entries by degree level, pick best of each
     bachelor_best: EducationLevelDetail | None = None
     master_best: EducationLevelDetail | None = None
 
+    _MASTER_IN_MAJOR = re.compile(r"碩士班|研究所|碩士", re.IGNORECASE)
+
     for ed in education_list:
-        level = _degree_level(ed.degree_level)
-        detail = _score_one(ed)
+        detail, level = _score_one(ed)
 
         if level == "bachelor":
             if bachelor_best is None or detail.base_score > bachelor_best.base_score:
                 bachelor_best = detail
+            # Detect "碩士班" / "研究所" embedded in the major field.
+            # This happens when the parser stores a dual/sequential degree as one
+            # entry (e.g. "資訊管理學系、電信工程學系碩士班").  Treat the same school
+            # as an implicit master's degree so the candidate isn't penalised.
+            if _MASTER_IN_MAJOR.search(ed.department):
+                # Re-score as non-PhD master (is_phd=False) for the implicit slot
+                s_tier, s_pts = _school_points(ed.school, is_phd=False)
+                m_tier, m_pts = _major_points(ed.department)
+                implicit_master = EducationLevelDetail(
+                    school=ed.school,
+                    school_tier=s_tier,
+                    school_points=s_pts,
+                    major=ed.department,
+                    major_relevance=m_tier,
+                    major_points=m_pts,
+                    base_score=s_pts + m_pts,
+                )
+                if master_best is None or implicit_master.base_score > master_best.base_score:
+                    master_best = implicit_master
         else:
             # master and phd both go into the "master" slot (higher education)
             if master_best is None or detail.base_score > master_best.base_score:
                 master_best = detail
 
-    # Calculate hybrid weighted score
     b_score = bachelor_best.base_score if bachelor_best else 0.0
     m_score = master_best.base_score if master_best else 0.0
 
@@ -162,24 +194,28 @@ def score_education(
         # Has graduate degree: bachelor * 0.7 + master * 0.3
         hybrid = b_score * 0.7 + m_score * 0.3
     else:
-        # Only bachelor: full weight on bachelor
-        hybrid = b_score * 0.7
+        # Bachelor-only: 0.9× preserves most weight, small premium for having a master
+        hybrid = b_score * 0.9
 
-    # Thesis bonus (check raw markdown)
-    thesis_bonus = 0.0
+    # Normalize base to 0–95 using denominator=24 to spread discrimination.
+    # Tier A school + Tier1 major (base=20) with full master: 20/24*100 ≈ 83.3
+    # Tier S (PhD, base=25) + Tier1 major with bachelor: (25*0.3+20*0.7)/24*100 ≈ 89.6
+    base_score_100 = min(hybrid / 24.0 * 100.0, 95.0)
+
+    # Thesis bonus: fully decoupled from cap.
+    # +2.5 pts for AI-related thesis/publications, +2.5 pts for top-venue acceptance.
+    thesis_bonus_pts = 0.0
     if raw_markdown:
         if THESIS_AI_KEYWORDS.search(raw_markdown):
-            thesis_bonus += 1.0  # +1 point out of 20
+            thesis_bonus_pts += 2.5
         if TOP_VENUE_KEYWORDS.search(raw_markdown):
-            thesis_bonus += 1.0  # +1 point out of 20
+            thesis_bonus_pts += 2.5
 
-    # Normalize to 0-100 (max raw = 20 + 2 bonus)
-    raw_total = hybrid + thesis_bonus
-    score = min(raw_total / 20.0 * 100.0, 100.0)
+    score = min(base_score_100 + thesis_bonus_pts, 100.0)
 
     return EducationScoreDetail(
         bachelor=bachelor_best,
         master=master_best,
-        thesis_bonus=round(thesis_bonus / 20.0 * 100.0, 1),
+        thesis_bonus=round(thesis_bonus_pts, 1),
         score=round(score, 1),
     )

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -161,6 +162,16 @@ def init_db():
     for col in ("personal_motto", "personal_traits", "autobiography"):
         if col not in existing_cols:
             conn.execute(f"ALTER TABLE candidates ADD COLUMN {col} TEXT")
+
+    # LLM tier cache columns
+    for col, col_type in (
+        ("llm_tier", "INTEGER"),
+        ("llm_tier_reasoning", "TEXT"),
+        ("llm_tier_md5", "TEXT"),
+        ("llm_tier_prompt_md5", "TEXT"),  # invalidates cache when prompt changes
+    ):
+        if col not in existing_cols:
+            conn.execute(f"ALTER TABLE candidates ADD COLUMN {col} {col_type}")
 
     # Migrate match_results for enhanced scoring columns
     match_cols = {r[1] for r in conn.execute("PRAGMA table_info(match_results)").fetchall()}
@@ -527,6 +538,12 @@ def ensure_job_requirement(title: str, source_json: str) -> int:
         "SELECT id FROM job_requirements WHERE title = ?", (title,)
     ).fetchone()
     if row:
+        # Always sync source_json so changes to job_requirement.json take effect
+        conn.execute(
+            "UPDATE job_requirements SET source_json = ? WHERE id = ?",
+            (source_json, row["id"]),
+        )
+        conn.commit()
         conn.close()
         return row["id"]
     cur = conn.cursor()
@@ -634,6 +651,37 @@ def get_filter_options() -> dict:
         "experience_ranges": ["0-2年", "3-5年", "5-10年", "10年+"],
         "score_ranges": ["80+", "60-79", "40-59", "<40", "No Score"],
     }
+
+
+def _md5(text: str) -> str:
+    return hashlib.md5(text.encode()).hexdigest()
+
+
+def get_cached_llm_tier(conn: sqlite3.Connection, candidate_id: int, raw_markdown: str) -> dict | None:
+    """Return cached LLM tier dict if both the resume MD5 and prompt MD5 match, else None."""
+    from app.llm import TIER_CLASSIFY_PROMPT_MD5
+    row = conn.execute(
+        "SELECT llm_tier, llm_tier_reasoning, llm_tier_md5, llm_tier_prompt_md5 FROM candidates WHERE id=?",
+        (candidate_id,),
+    ).fetchone()
+    if (
+        row
+        and row["llm_tier"]
+        and row["llm_tier_md5"] == _md5(raw_markdown or "")
+        and row["llm_tier_prompt_md5"] == TIER_CLASSIFY_PROMPT_MD5
+    ):
+        return {"tier": row["llm_tier"], "reasoning": row["llm_tier_reasoning"]}
+    return None
+
+
+def store_llm_tier_cache(conn: sqlite3.Connection, candidate_id: int, raw_markdown: str, result: dict):
+    """Store LLM tier classification result in cache columns."""
+    from app.llm import TIER_CLASSIFY_PROMPT_MD5
+    conn.execute(
+        "UPDATE candidates SET llm_tier=?, llm_tier_reasoning=?, llm_tier_md5=?, llm_tier_prompt_md5=? WHERE id=?",
+        (result.get("tier"), result.get("reasoning", ""), _md5(raw_markdown or ""), TIER_CLASSIFY_PROMPT_MD5, candidate_id),
+    )
+    conn.commit()
 
 
 def update_candidate_embedding(candidate_id: int, embedding: list[float]):

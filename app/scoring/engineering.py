@@ -1,6 +1,6 @@
 """Full-Stack Engineering Capability Matrix.
 
-M_Eng = B (Backend) + D (Database) + F (Frontend), max 0.5
+M_Eng = B (Backend) + D (Database) + F (Frontend), max 0.7
 """
 
 from __future__ import annotations
@@ -63,10 +63,14 @@ FE_L1_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Score mapping per level
-BACKEND_SCORES = {0: 0.0, 1: 0.1, 2: 0.15, 3: 0.25}
-DB_SCORES = {0: 0.0, 1: 0.05, 2: 0.1, 3: 0.15}
-FE_SCORES = {0: 0.0, 1: 0.0, 2: 0.05, 3: 0.1}
+# Score mapping per level.
+# v2: cap raised 0.5 → 0.7 to widen discrimination among senior engineers.
+# Backend L3 bumped (0.25→0.35), DB L3 (0.15→0.20), FE L3 (0.10→0.15) to
+# utilise the extra headroom.  FE L1 (Streamlit/Gradio) now scores 0.02 to
+# acknowledge demo-building ability instead of being a flat zero.
+BACKEND_SCORES = {0: 0.0, 1: 0.10, 2: 0.20, 3: 0.35}
+DB_SCORES = {0: 0.0, 1: 0.05, 2: 0.12, 3: 0.20}
+FE_SCORES = {0: 0.0, 1: 0.02, 2: 0.05, 3: 0.15}
 
 
 def score_engineering_maturity(
@@ -121,7 +125,7 @@ def score_engineering_maturity(
     b = BACKEND_SCORES[backend_level]
     d = DB_SCORES[database_level]
     f = FE_SCORES[frontend_level]
-    m_eng = min(b + d + f, 0.5)
+    m_eng = min(b + d + f, 0.7)  # cap raised from 0.5 to 0.7
 
     return EngineeringMaturityDetail(
         backend_level=backend_level,
