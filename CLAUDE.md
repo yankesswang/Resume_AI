@@ -6,7 +6,7 @@ Resume parsing and candidate screening system with a FastAPI backend and Vue 3 f
 
 ```bash
 # Backend (FastAPI)
-uv run python -m uvicorn main:app --reload --port 8000
+uv run python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # Frontend (Vue 3 + Vite)
 cd frontend && npm run dev

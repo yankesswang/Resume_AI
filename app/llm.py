@@ -246,6 +246,64 @@ def classify_ai_tier(
         return {"tier": 1, "tier_label": "Wrapper", "evidence": [], "reasoning": "分類失敗"}
 
 
+_INTERVIEW_Q_PROMPT = """\
+你是一位資深的 AI 技術招募專家。根據以下候選人履歷與職位需求，生成一份量身打造的繁體中文面試問題清單。
+
+要求：
+- 所有問題使用繁體中文
+- 問題必須具體，直接引用候選人履歷中的實際技術、專案或公司
+- 覆蓋以下四個類別（每類 2-3 題）：
+  1. 技術深度驗證 — 驗證履歷中提到的具體技術能力
+  2. 專案經驗深挖 — 探究實際成果、規模與影響力
+  3. 問題解決能力 — 針對職位需求的情境式問題
+  4. 職位匹配與動機 — 了解與此職位的契合度
+
+Return ONLY valid JSON（不含 markdown fences，不含多餘說明）：
+{
+  "questions": [
+    {
+      "category": "技術深度驗證",
+      "question": "具體問題內容",
+      "purpose": "此問題希望驗證的能力（一句話）"
+    }
+  ]
+}"""
+
+
+def generate_interview_questions(candidate: dict, job_data: dict) -> dict:
+    """Use LLM to generate tailored interview questions in Traditional Chinese."""
+    candidate_summary = {
+        "name": candidate.get("name", ""),
+        "education": candidate.get("education", []),
+        "work_experiences": candidate.get("work_experiences", []),
+        "skill_tags": candidate.get("skill_tags", []),
+        "self_introduction": candidate.get("self_introduction", ""),
+        "years_of_experience": candidate.get("years_of_experience", ""),
+    }
+    candidate_json = json.dumps(candidate_summary, ensure_ascii=False)
+    job_json = json.dumps(job_data, ensure_ascii=False)
+
+    user_content = (
+        f"=== 候選人資料 ===\n{candidate_json}\n\n"
+        f"=== 職位需求 ===\n{job_json}"
+    )
+    user_content = _truncate_to_fit(_INTERVIEW_Q_PROMPT, user_content)
+
+    messages = [
+        {"role": "system", "content": _INTERVIEW_Q_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+
+    raw = _chat(messages, temperature=0.5, max_tokens=RESPONSE_TOKENS)
+    cleaned = _strip_fences(raw)
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        logger.error("LLM interview questions returned invalid JSON: %s", cleaned[:500])
+        return {"questions": []}
+
+
 _SCORECARD_PROMPT = """\
 You are an AI recruitment analyst. Generate a detailed scorecard for a candidate based on the scoring data provided.
 

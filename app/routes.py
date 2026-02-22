@@ -4,36 +4,84 @@ import json
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, File, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, BackgroundTasks, File, UploadFile
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.database import (
+    create_interview,
+    create_interview_status,
+    delete_interview,
+    delete_interview_status,
     ensure_job_requirement,
     get_all_candidates_summary,
+    get_all_interviews,
     get_candidate_detail,
     get_candidates_export_data,
     get_filter_options,
+    get_interested_ids,
+    get_interview_statuses,
+    get_invitation_sent_ids,
     get_job_requirement,
     get_match_result,
+    set_candidate_interested,
+    set_candidate_invitation_sent,
+    store_interview_questions,
+    update_interview,
     upsert_match_result,
 )
-from app.llm import match_candidate_to_job
-from app.models import EnhancedMatchResult, MatchResultExtract, ResumeExtract
-
-
-class ExportRequest(BaseModel):
-    candidate_ids: list[int]
-from app.parser_service import ingest_existing_markdown, ingest_pdf, reparse_existing
+from app.parser_service import ingest_pdf
 from app.scoring.pipeline import run_full_scoring
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 
 JOB_REQ_PATH = Path(__file__).resolve().parent.parent / "job_requirement.json"
+OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
+
+
+class ExportRequest(BaseModel):
+    candidate_ids: list[int]
+
+
+class InterestedRequest(BaseModel):
+    interested: bool
+
+
+class InvitationSentRequest(BaseModel):
+    invitation_sent: bool
+
+
+class InterviewCreate(BaseModel):
+    candidate_id: int | None = None
+    interview_date: str
+    interview_time: str | None = None
+    interview_type: str = "onsite"
+    status: str | None = None
+    location: str | None = None
+    notes: str | None = None
+    assignment_due_date: str | None = None
+    available_start_date: str | None = None
+    resume_notes: str | None = None
+
+
+class InterviewUpdate(BaseModel):
+    candidate_id: int | None = None
+    interview_date: str
+    interview_time: str | None = None
+    interview_type: str = "onsite"
+    status: str | None = None
+    location: str | None = None
+    notes: str | None = None
+    assignment_due_date: str | None = None
+    available_start_date: str | None = None
+    resume_notes: str | None = None
+
+
+class InterviewStatusCreate(BaseModel):
+    label: str
+    color: str = "gray"
 
 
 def _get_default_job_id() -> int:
@@ -43,42 +91,33 @@ def _get_default_job_id() -> int:
     return ensure_job_requirement(title, json.dumps(data, ensure_ascii=False))
 
 
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
-
+# --- Photo resolution ---
 
 _photo_cache: dict[str, str] | None = None
 
 
 def _build_photo_cache() -> dict[str, str]:
-    """Build a relative-path -> URL cache for all image files in output/."""
+    """Build a relative-path → URL mapping for all images under output/."""
     cache: dict[str, str] = {}
     if OUTPUT_DIR.exists():
         for p in OUTPUT_DIR.rglob("*"):
             if p.is_file() and p.suffix.lower() in (".jpeg", ".jpg", ".png", ".gif", ".webp"):
                 rel = str(p.relative_to(OUTPUT_DIR))
-                url = f"/output/{rel}"
-                cache[rel] = url
+                cache[rel] = f"/output/{rel}"
     return cache
 
 
 def _extract_output_relative_dir(md_path: str) -> str:
-    """Extract the directory relative to 'output/' from a source_md_path.
-
-    Handles both relative paths like 'output/1/1_original.md'
-    and absolute paths from other machines like
-    '/home/trx50/gitlab/resume_ai/output/1/1_original.md'.
-    """
-    # Find 'output/' in the path and take everything after it
+    """Extract the directory relative to 'output/' from a source_md_path."""
     idx = md_path.find("output/")
     if idx != -1:
-        # e.g. "output/1/1_original.md" -> "1"
         rel = md_path[idx + len("output/"):]
         return str(Path(rel).parent)
     return ""
 
 
 def _resolve_photo_url(candidate: dict) -> str:
-    """Build the /output/... URL for a candidate's photo."""
+    """Return the /output/... URL for a candidate's photo."""
     global _photo_cache
     photo = candidate.get("photo_path", "")
     if not photo:
@@ -91,11 +130,9 @@ def _resolve_photo_url(candidate: dict) -> str:
     if md_path:
         rel_dir = _extract_output_relative_dir(md_path)
         if rel_dir:
-            # Check candidate's own directory (e.g. "1/_page_0_Picture_2.jpeg")
             candidate_rel = f"{rel_dir}/{photo}"
             if candidate_rel in _photo_cache:
                 return _photo_cache[candidate_rel]
-            # Check parent directory (batch imports with subdirs)
             parent_dir = str(Path(rel_dir).parent)
             if parent_dir and parent_dir != ".":
                 parent_rel = f"{parent_dir}/{photo}"
@@ -105,70 +142,10 @@ def _resolve_photo_url(candidate: dict) -> str:
     return f"/output/{photo}"
 
 
-# --- Pages ---
-
-@router.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    candidates = get_all_candidates_summary()
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "candidates": candidates,
-    })
-
-
-@router.get("/upload", response_class=HTMLResponse)
-async def upload_page(request: Request):
-    return templates.TemplateResponse("upload.html", {"request": request})
-
-
-@router.post("/upload")
-async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    pdf_bytes = await file.read()
-    candidate_id = ingest_pdf(pdf_bytes, file.filename)
-    # Auto-run scoring after ingestion
-    job_id = _get_default_job_id()
-    background_tasks.add_task(_run_match, candidate_id, job_id)
-    return RedirectResponse(url=f"/candidates/{candidate_id}", status_code=303)
-
-
-@router.post("/api/upload")
-async def api_upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    pdf_bytes = await file.read()
-    candidate_id = ingest_pdf(pdf_bytes, file.filename)
-    candidate = get_candidate_detail(candidate_id)
-    if candidate:
-        candidate["photo_url"] = _resolve_photo_url(candidate)
-
-    # Auto-run scoring after ingestion
-    job_id = _get_default_job_id()
-    background_tasks.add_task(_run_match, candidate_id, job_id)
-    logger.info("Auto-queued scoring for candidate %d", candidate_id)
-
-    return {"candidate_id": candidate_id, "candidate": candidate}
-
-
-@router.get("/candidates/{candidate_id}", response_class=HTMLResponse)
-async def candidate_detail(request: Request, candidate_id: int):
-    candidate = get_candidate_detail(candidate_id)
-    if not candidate:
-        return HTMLResponse("Candidate not found", status_code=404)
-
-    # Check for existing match result
-    try:
-        job_id = _get_default_job_id()
-        match = get_match_result(candidate_id, job_id)
-    except Exception:
-        match = None
-
-    return templates.TemplateResponse("candidate.html", {
-        "request": request,
-        "candidate": candidate,
-        "match": match,
-    })
-
+# --- Background task ---
 
 def _run_match(candidate_id: int, job_id: int):
-    """Background task to run enhanced scoring pipeline."""
+    """Background task: run the full scoring pipeline and persist results."""
     try:
         detail = get_candidate_detail(candidate_id)
         if not detail:
@@ -179,52 +156,35 @@ def _run_match(candidate_id: int, job_id: int):
             return
 
         job_data = json.loads(job_row["source_json"])
-
-        # Run the full enhanced scoring pipeline
         result = run_full_scoring(detail, job_data)
         upsert_match_result(candidate_id, job_id, result)
-        logger.info("Enhanced match completed for candidate %d, job %d", candidate_id, job_id)
+        logger.info("Scoring completed for candidate %d (job %d)", candidate_id, job_id)
     except Exception:
-        logger.exception("Match failed for candidate %d", candidate_id)
+        logger.exception("Scoring failed for candidate %d", candidate_id)
 
 
-@router.post("/candidates/{candidate_id}/match")
-async def run_match(candidate_id: int, background_tasks: BackgroundTasks):
+# --- Upload ---
+
+@router.post("/api/upload")
+async def api_upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    pdf_bytes = await file.read()
+    candidate_id = ingest_pdf(pdf_bytes, file.filename or "")
+    candidate = get_candidate_detail(candidate_id)
+    if candidate:
+        candidate["photo_url"] = _resolve_photo_url(candidate)
+
     job_id = _get_default_job_id()
     background_tasks.add_task(_run_match, candidate_id, job_id)
-    return RedirectResponse(url=f"/candidates/{candidate_id}/match", status_code=303)
+    logger.info("Auto-queued scoring for candidate %d", candidate_id)
+
+    return {"candidate_id": candidate_id, "candidate": candidate}
 
 
-@router.get("/candidates/{candidate_id}/match", response_class=HTMLResponse)
-async def view_match(request: Request, candidate_id: int):
-    candidate = get_candidate_detail(candidate_id)
-    if not candidate:
-        return HTMLResponse("Candidate not found", status_code=404)
-
-    job_id = _get_default_job_id()
-    match = get_match_result(candidate_id, job_id)
-    job_row = get_job_requirement(job_id)
-
-    return templates.TemplateResponse("match.html", {
-        "request": request,
-        "candidate": candidate,
-        "match": match,
-        "job": json.loads(job_row["source_json"]) if job_row else {},
-    })
-
-
-@router.post("/candidates/{candidate_id}/reparse")
-async def reparse(candidate_id: int):
-    reparse_existing(candidate_id)
-    return RedirectResponse(url=f"/candidates/{candidate_id}", status_code=303)
-
-
-# --- JSON API ---
+# --- Candidates ---
 
 @router.get("/api/candidates")
 async def api_candidates():
     candidates = get_all_candidates_summary()
-    # Enrich each candidate with photo_url
     for c in candidates:
         c["photo_url"] = _resolve_photo_url(c)
     return candidates
@@ -253,68 +213,180 @@ async def api_match_result(candidate_id: int):
 async def api_run_match(candidate_id: int, background_tasks: BackgroundTasks):
     job_id = _get_default_job_id()
     background_tasks.add_task(_run_match, candidate_id, job_id)
-    return {"status": "matching", "candidate_id": candidate_id, "job_id": job_id}
+    return {"status": "queued", "candidate_id": candidate_id, "job_id": job_id}
+
+
+@router.post("/api/candidates/{candidate_id}/interview-questions")
+async def api_interview_questions(candidate_id: int):
+    """Generate LLM-based interview questions in Chinese for a candidate."""
+    from app.llm import generate_interview_questions
+
+    candidate = get_candidate_detail(candidate_id)
+    if not candidate:
+        return JSONResponse({"error": "Candidate not found"}, status_code=404)
+
+    try:
+        job_id = _get_default_job_id()
+        job_row = get_job_requirement(job_id)
+        job_data = json.loads(job_row["source_json"]) if job_row else {}
+    except Exception:
+        job_data = {}
+
+    try:
+        result = generate_interview_questions(candidate, job_data)
+    except Exception as e:
+        err = str(e)
+        if "Connection refused" in err or "ConnectError" in err:
+            return JSONResponse(
+                {"error": "LM Studio is not running. Please start it at http://192.168.0.84:1234."},
+                status_code=503,
+            )
+        logger.exception("Interview questions generation failed for candidate %d", candidate_id)
+        return JSONResponse({"error": "LLM error: " + err}, status_code=500)
+    store_interview_questions(candidate_id, result)
+    return result
+
+
+def _run_interview_questions(candidate_id: int, job_id: int):
+    """Background task: generate and store interview questions for one candidate."""
+    from app.llm import generate_interview_questions
+    try:
+        candidate = get_candidate_detail(candidate_id)
+        if not candidate:
+            return
+        job_row = get_job_requirement(job_id)
+        job_data = json.loads(job_row["source_json"]) if job_row else {}
+        result = generate_interview_questions(candidate, job_data)
+        store_interview_questions(candidate_id, result)
+        logger.info("Interview questions generated for candidate %d", candidate_id)
+    except Exception:
+        logger.exception("Interview questions failed for candidate %d", candidate_id)
+
+
+@router.post("/api/batch-interview-questions")
+async def api_batch_interview_questions(background_tasks: BackgroundTasks):
+    """Generate interview questions for all interested candidates (background)."""
+    ids = get_interested_ids()
+    if not ids:
+        return {"status": "no_interested_candidates", "count": 0}
+    job_id = _get_default_job_id()
+    for cid in ids:
+        background_tasks.add_task(_run_interview_questions, cid, job_id)
+    logger.info("Queued interview question generation for %d candidates", len(ids))
+    return {"status": "queued", "count": len(ids), "candidate_ids": ids}
 
 
 @router.get("/api/candidates/{candidate_id}/scorecard")
 async def api_scorecard(candidate_id: int):
-    """Return the full enhanced scorecard with all dimension breakdowns."""
+    """Return the full scorecard with all dimension breakdowns."""
     try:
         job_id = _get_default_job_id()
         match = get_match_result(candidate_id, job_id)
     except Exception:
         match = None
     if not match:
-        return JSONResponse({"error": "No match result found. Run match first."}, status_code=404)
+        return JSONResponse({"error": "No match result found. Run scoring first."}, status_code=404)
     return {"scorecard": match}
 
 
 @router.post("/api/candidates/batch-match")
 async def api_batch_match(background_tasks: BackgroundTasks):
-    """Run matching for all candidates that don't have a match result yet."""
+    """Queue scoring for all candidates that don't have a result yet."""
     job_id = _get_default_job_id()
     candidates = get_all_candidates_summary()
-    queued = 0
-    for c in candidates:
-        if c.get("overall_score") is None:
-            background_tasks.add_task(_run_match, c["id"], job_id)
-            queued += 1
+    queued = sum(
+        1 for c in candidates
+        if c.get("overall_score") is None
+        and not background_tasks.add_task(_run_match, c["id"], job_id)
+    )
     return {"status": "queued", "count": queued, "job_id": job_id}
 
+
+# --- Interested ---
+
+@router.get("/api/interested")
+async def api_get_interested():
+    return {"ids": get_interested_ids()}
+
+
+@router.post("/api/candidates/{candidate_id}/interested")
+async def api_set_interested(candidate_id: int, body: InterestedRequest):
+    set_candidate_interested(candidate_id, body.interested)
+    return {"candidate_id": candidate_id, "interested": body.interested}
+
+
+# --- Invitation sent ---
+
+@router.get("/api/invitation-sent")
+async def api_get_invitation_sent():
+    return {"ids": get_invitation_sent_ids()}
+
+
+@router.post("/api/candidates/{candidate_id}/invitation-sent")
+async def api_set_invitation_sent(candidate_id: int, body: InvitationSentRequest):
+    set_candidate_invitation_sent(candidate_id, body.invitation_sent)
+    return {"candidate_id": candidate_id, "invitation_sent": body.invitation_sent}
+
+
+# --- Interviews ---
+
+@router.get("/api/interviews")
+async def api_get_interviews():
+    interviews = get_all_interviews()
+    for iv in interviews:
+        iv["photo_url"] = _resolve_photo_url(iv)
+    return interviews
+
+
+@router.post("/api/interviews")
+async def api_create_interview(body: InterviewCreate):
+    interview_id = create_interview(body.model_dump())
+    return {"id": interview_id}
+
+
+@router.put("/api/interviews/{interview_id}")
+async def api_update_interview(interview_id: int, body: InterviewUpdate):
+    update_interview(interview_id, body.model_dump())
+    return {"id": interview_id}
+
+
+@router.delete("/api/interviews/{interview_id}")
+async def api_delete_interview(interview_id: int):
+    delete_interview(interview_id)
+    return {"deleted": interview_id}
+
+
+# --- Interview Statuses ---
+
+@router.get("/api/interview-statuses")
+async def api_get_interview_statuses():
+    return get_interview_statuses()
+
+
+@router.post("/api/interview-statuses")
+async def api_create_interview_status(body: InterviewStatusCreate):
+    status_id = create_interview_status(body.label, body.color)
+    return {"id": status_id, "label": body.label, "color": body.color}
+
+
+@router.delete("/api/interview-statuses/{status_id}")
+async def api_delete_interview_status(status_id: int):
+    delete_interview_status(status_id)
+    return {"deleted": status_id}
+
+
+# --- Filters ---
 
 @router.get("/api/filters")
 async def api_filters():
     return get_filter_options()
 
 
-# --- Ingest existing markdown ---
-
-@router.get("/ingest-existing", response_class=HTMLResponse)
-async def ingest_existing_page(request: Request):
-    """List available markdown files in output/ that can be ingested."""
-    output_dir = Path(__file__).resolve().parent.parent / "output"
-    md_files = sorted(output_dir.glob("**/*_original.md"))
-    return templates.TemplateResponse("upload.html", {
-        "request": request,
-        "md_files": [str(f) for f in md_files],
-    })
-
-
-@router.post("/ingest-markdown")
-async def ingest_markdown(request: Request):
-    form = await request.form()
-    md_path = form.get("md_path", "")
-    if not md_path or not Path(md_path).exists():
-        return HTMLResponse("Markdown file not found", status_code=400)
-    candidate_id = ingest_existing_markdown(str(md_path))
-    return RedirectResponse(url=f"/candidates/{candidate_id}", status_code=303)
-
-
-# --- Export API ---
+# --- Export ---
 
 @router.post("/api/export/candidates")
 async def api_export_candidates(body: ExportRequest):
-    """Return full candidate data + scores for given IDs (bookmarks page)."""
+    """Return full candidate data + scores for the given IDs."""
     data = get_candidates_export_data(body.candidate_ids)
     for c in data:
         c["photo_url"] = _resolve_photo_url(c)
@@ -323,33 +395,33 @@ async def api_export_candidates(body: ExportRequest):
 
 @router.post("/api/export/candidates/csv")
 async def api_export_candidates_csv(body: ExportRequest):
-    """Return a downloadable CSV of candidate data with BOM for Excel Chinese support."""
+    """Return a downloadable CSV with UTF-8 BOM (for Excel CJK support)."""
     data = get_candidates_export_data(body.candidate_ids)
 
     output = io.StringIO()
     output.write("\ufeff")  # UTF-8 BOM for Excel
     writer = csv.writer(output)
 
-    headers = [
+    writer.writerow([
         "ID", "姓名", "英文名", "104代碼", "年齡", "學歷", "學校", "科系",
         "年資", "技能", "Email", "手機", "期望薪資",
         "總分", "學歷分", "經歷分", "技能分", "AI分", "工程分", "加權總分",
-        "AI Tier", "優勢", "不足", "分析",
-        "工作經歷",
-    ]
-    writer.writerow(headers)
+        "AI Tier", "優勢", "不足", "分析", "工作經歷",
+    ])
 
     for c in data:
-        # Format work experiences as a single string
-        work_lines = []
-        for w in c.get("work_experiences", []):
-            line = f"{w.get('company_name', '')} - {w.get('job_title', '')} ({w.get('date_start', '')}~{w.get('date_end', '')})"
-            work_lines.append(line)
+        work_lines = [
+            f"{w.get('company_name', '')} - {w.get('job_title', '')} "
+            f"({w.get('date_start', '')}~{w.get('date_end', '')})"
+            for w in c.get("work_experiences", [])
+        ]
 
-        tier_info = ""
         exp_detail = c.get("experience_detail")
-        if isinstance(exp_detail, dict) and exp_detail.get("tier"):
-            tier_info = f"T{exp_detail['tier']} {exp_detail.get('tier_label', '')}"
+        tier_info = (
+            f"T{exp_detail['tier']} {exp_detail.get('tier_label', '')}"
+            if isinstance(exp_detail, dict) and exp_detail.get("tier")
+            else ""
+        )
 
         writer.writerow([
             c.get("id", ""),
@@ -383,5 +455,5 @@ async def api_export_candidates_csv(body: ExportRequest):
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": "attachment; filename=interested_candidates.csv"},
+        headers={"Content-Disposition": "attachment; filename=candidates.csv"},
     )

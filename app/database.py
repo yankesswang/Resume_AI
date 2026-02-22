@@ -135,6 +135,29 @@ def init_db():
             source_json TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS interviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            candidate_id INTEGER,
+            interview_date TEXT NOT NULL,
+            interview_time TEXT,
+            interview_type TEXT DEFAULT 'onsite',
+            status TEXT,
+            location TEXT,
+            notes TEXT,
+            assignment_due_date TEXT,
+            available_start_date TEXT,
+            resume_notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS interview_statuses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            label TEXT NOT NULL UNIQUE,
+            color TEXT DEFAULT 'gray',
+            sort_order INTEGER DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS match_results (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             candidate_id INTEGER NOT NULL,
@@ -162,6 +185,18 @@ def init_db():
     for col in ("personal_motto", "personal_traits", "autobiography"):
         if col not in existing_cols:
             conn.execute(f"ALTER TABLE candidates ADD COLUMN {col} TEXT")
+
+    # Interested flag
+    if "interested" not in existing_cols:
+        conn.execute("ALTER TABLE candidates ADD COLUMN interested INTEGER DEFAULT 0")
+
+    # Invitation sent flag
+    if "invitation_sent" not in existing_cols:
+        conn.execute("ALTER TABLE candidates ADD COLUMN invitation_sent INTEGER DEFAULT 0")
+
+    # Interview questions cache
+    if "interview_questions" not in existing_cols:
+        conn.execute("ALTER TABLE candidates ADD COLUMN interview_questions TEXT")
 
     # LLM tier cache columns
     for col, col_type in (
@@ -192,6 +227,30 @@ def init_db():
     for col_name, col_type in new_match_columns.items():
         if col_name not in match_cols:
             conn.execute(f"ALTER TABLE match_results ADD COLUMN {col_name} {col_type}")
+
+    # Migrate interviews table for new columns
+    interview_cols = {r[1] for r in conn.execute("PRAGMA table_info(interviews)").fetchall()}
+    for col in ("status", "assignment_due_date", "available_start_date", "resume_notes"):
+        if col not in interview_cols:
+            conn.execute(f"ALTER TABLE interviews ADD COLUMN {col} TEXT")
+
+    # Seed default interview statuses if table is empty
+    status_count = conn.execute("SELECT COUNT(*) FROM interview_statuses").fetchone()[0]
+    if status_count == 0:
+        defaults = [
+            ("初篩", "blue", 1),
+            ("一面", "purple", 2),
+            ("二面", "indigo", 3),
+            ("HR面試", "orange", 4),
+            ("Offer已發", "emerald", 5),
+            ("婉拒", "red", 6),
+            ("錄取", "green", 7),
+        ]
+        for label, color, order in defaults:
+            conn.execute(
+                "INSERT OR IGNORE INTO interview_statuses (label, color, sort_order) VALUES (?, ?, ?)",
+                (label, color, order),
+            )
 
     conn.commit()
     conn.close()
@@ -344,7 +403,7 @@ def get_all_candidates_summary() -> list[dict]:
         """SELECT c.id, c.name, c.code_104, c.birth_year, c.education_level, c.school, c.major,
                   c.years_of_experience, c.ideal_positions,
                   c.desired_job_categories, c.skill_tags,
-                  c.photo_path, c.source_md_path,
+                  c.photo_path, c.source_md_path, c.interested, c.invitation_sent,
                   m.overall_score, m.s_ai, m.m_eng, m.s_total,
                   m.experience_detail, m.passed_hard_filter, m.tags
            FROM candidates c
@@ -379,6 +438,8 @@ def get_all_candidates_summary() -> list[dict]:
             d["tags"] = []
         if "passed_hard_filter" in d and d["passed_hard_filter"] is not None:
             d["passed_hard_filter"] = bool(d["passed_hard_filter"])
+        d["interested"] = bool(d.get("interested", 0))
+        d["invitation_sent"] = bool(d.get("invitation_sent", 0))
         results.append(d)
     return results
 
@@ -426,6 +487,11 @@ def get_candidate_detail(candidate_id: int) -> dict | None:
             (candidate_id,),
         ).fetchall()
     ]
+
+    if candidate.get("interview_questions"):
+        candidate["interview_questions"] = json.loads(candidate["interview_questions"])
+    else:
+        candidate["interview_questions"] = None
 
     conn.close()
     return candidate
@@ -703,6 +769,160 @@ def get_candidate_embedding(candidate_id: int) -> list[float] | None:
     if not row or not row["embedding"]:
         return None
     return json.loads(row["embedding"])
+
+
+def store_interview_questions(candidate_id: int, questions: dict):
+    conn = _connect()
+    conn.execute(
+        "UPDATE candidates SET interview_questions = ? WHERE id = ?",
+        (json.dumps(questions, ensure_ascii=False), candidate_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_candidate_interested(candidate_id: int, interested: bool):
+    conn = _connect()
+    conn.execute(
+        "UPDATE candidates SET interested = ? WHERE id = ?",
+        (1 if interested else 0, candidate_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_interested_ids() -> list[int]:
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT id FROM candidates WHERE interested = 1 ORDER BY id"
+    ).fetchall()
+    conn.close()
+    return [r["id"] for r in rows]
+
+
+def set_candidate_invitation_sent(candidate_id: int, sent: bool):
+    conn = _connect()
+    conn.execute(
+        "UPDATE candidates SET invitation_sent = ? WHERE id = ?",
+        (1 if sent else 0, candidate_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_invitation_sent_ids() -> list[int]:
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT id FROM candidates WHERE invitation_sent = 1 ORDER BY id"
+    ).fetchall()
+    conn.close()
+    return [r["id"] for r in rows]
+
+
+def get_all_interviews() -> list[dict]:
+    conn = _connect()
+    rows = conn.execute(
+        """SELECT i.id, i.candidate_id, i.interview_date, i.interview_time,
+                  i.interview_type, i.status, i.location, i.notes,
+                  i.assignment_due_date, i.available_start_date, i.resume_notes,
+                  i.created_at,
+                  c.name AS candidate_name, c.photo_path, c.source_md_path
+           FROM interviews i
+           LEFT JOIN candidates c ON i.candidate_id = c.id
+           ORDER BY i.interview_date, i.interview_time"""
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def create_interview(data: dict) -> int:
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO interviews (
+               candidate_id, interview_date, interview_time, interview_type,
+               status, location, notes, assignment_due_date, available_start_date, resume_notes
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            data.get("candidate_id"),
+            data.get("interview_date"),
+            data.get("interview_time"),
+            data.get("interview_type", "onsite"),
+            data.get("status"),
+            data.get("location"),
+            data.get("notes"),
+            data.get("assignment_due_date"),
+            data.get("available_start_date"),
+            data.get("resume_notes"),
+        ),
+    )
+    interview_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return interview_id
+
+
+def update_interview(interview_id: int, data: dict):
+    conn = _connect()
+    conn.execute(
+        """UPDATE interviews SET
+               candidate_id=?, interview_date=?, interview_time=?, interview_type=?,
+               status=?, location=?, notes=?,
+               assignment_due_date=?, available_start_date=?, resume_notes=?
+           WHERE id=?""",
+        (
+            data.get("candidate_id"),
+            data.get("interview_date"),
+            data.get("interview_time"),
+            data.get("interview_type", "onsite"),
+            data.get("status"),
+            data.get("location"),
+            data.get("notes"),
+            data.get("assignment_due_date"),
+            data.get("available_start_date"),
+            data.get("resume_notes"),
+            interview_id,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_interview_statuses() -> list[dict]:
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT * FROM interview_statuses ORDER BY sort_order, id"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def create_interview_status(label: str, color: str = "gray") -> int:
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO interview_statuses (label, color, sort_order)
+           VALUES (?, ?, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM interview_statuses))""",
+        (label, color),
+    )
+    status_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return status_id
+
+
+def delete_interview_status(status_id: int):
+    conn = _connect()
+    conn.execute("DELETE FROM interview_statuses WHERE id = ?", (status_id,))
+    conn.commit()
+    conn.close()
+
+
+def delete_interview(interview_id: int):
+    conn = _connect()
+    conn.execute("DELETE FROM interviews WHERE id = ?", (interview_id,))
+    conn.commit()
+    conn.close()
 
 
 def delete_candidate_data(candidate_id: int):
