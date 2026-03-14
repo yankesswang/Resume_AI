@@ -1,7 +1,7 @@
 [project]
 name = "resume-ai"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI-powered resume screening and candidate scoring system"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

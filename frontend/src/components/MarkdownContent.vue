@@ -18,7 +18,6 @@ marked.setOptions({
 
 const rendered = computed(() => {
   if (!props.content) return ''
-  // Convert hashtag lines like "#Python #JavaScript" into badge-style spans
   const processed = props.content.replace(
     /^(#\w\S*(?:\s+#\w\S*)*)$/gm,
     (line) =>
@@ -34,42 +33,42 @@ const rendered = computed(() => {
 
 <style scoped>
 .markdown-content {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   line-height: 1.75;
-  color: rgba(0, 0, 0, 0.87);
+  color: #C9D1D9;
 }
 
 .markdown-content :deep(h1) {
-  font-size: 1.35rem;
+  font-size: 1.2rem;
   font-weight: 700;
   margin: 1.2rem 0 0.5rem;
-  color: #1565c0;
+  color: #79C0FF;
 }
 
 .markdown-content :deep(h2) {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: 700;
   margin: 1rem 0 0.4rem;
-  color: #1565c0;
+  color: #79C0FF;
 }
 
 .markdown-content :deep(h3) {
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 700;
   margin: 0.9rem 0 0.4rem;
-  color: #333;
+  color: #E6EDF3;
 }
 
 .markdown-content :deep(h4) {
-  font-size: 1.0rem;
+  font-size: 0.95rem;
   font-weight: 700;
   margin: 0.8rem 0 0.3rem;
-  color: #333;
+  color: #B1BAC4;
 }
 
 .markdown-content :deep(ul),
 .markdown-content :deep(ol) {
-  padding-left: 1.5rem;
+  padding-left: 1.4rem;
   margin: 0.3rem 0;
 }
 
@@ -83,13 +82,13 @@ const rendered = computed(() => {
 
 .markdown-content :deep(.md-tag) {
   display: inline-block;
-  background: #e3f2fd;
-  color: #1565c0;
-  border: 1px solid #90caf9;
-  border-radius: 12px;
-  padding: 2px 10px;
-  font-size: 0.8rem;
+  background: #0d1f32;
+  color: #58A6FF;
+  border: 1px solid #1d3e6e;
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-size: 0.78rem;
   font-weight: 500;
-  margin: 2px 3px;
+  margin: 2px 2px;
 }
 </style>

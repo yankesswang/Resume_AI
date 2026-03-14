@@ -10,7 +10,10 @@ dist/
 # User data - resumes, parsed output, databases
 data/
 output/
-resume_ai.db
+*.db
+*.csv
+*_candidates.json
+sample_candidates.json
 
 # Frontend
 frontend/node_modules/

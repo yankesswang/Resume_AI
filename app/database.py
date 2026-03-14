@@ -781,6 +781,51 @@ def store_interview_questions(candidate_id: int, questions: dict):
     conn.close()
 
 
+def delete_candidate(candidate_id: int):
+    """Permanently delete a candidate and all related rows (cascade)."""
+    conn = _connect()
+    conn.execute("DELETE FROM candidates WHERE id = ?", (candidate_id,))
+    conn.commit()
+    conn.close()
+
+
+def create_manual_candidate(
+    name: str,
+    email: str | None = None,
+    mobile: str | None = None,
+    education_level: str | None = None,
+    school: str | None = None,
+    years_of_experience: str | None = None,
+    skills_text: str | None = None,
+    skill_tags: list[str] | None = None,
+    desired_salary: str | None = None,
+) -> int:
+    """Insert a manually entered candidate and mark them as interested. Returns new candidate id."""
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO candidates
+               (name, email, mobile1, education_level, school, years_of_experience,
+                skills_text, skill_tags, desired_salary, interested)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+        (
+            name,
+            email,
+            mobile,
+            education_level,
+            school,
+            years_of_experience,
+            skills_text,
+            json.dumps(skill_tags or [], ensure_ascii=False),
+            desired_salary,
+        ),
+    )
+    candidate_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return candidate_id
+
+
 def set_candidate_interested(candidate_id: int, interested: bool):
     conn = _connect()
     conn.execute(

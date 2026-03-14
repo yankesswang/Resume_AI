@@ -1,35 +1,28 @@
 <template>
-  <div class="engineering-matrix">
-    <div class="d-flex align-center mb-3">
-      <span class="text-subtitle-2 font-weight-bold">Engineering Maturity</span>
-      <v-chip
-        size="small"
-        :color="mEngColor"
-        variant="tonal"
-        class="ml-2"
-      >
+  <div>
+    <div class="flex items-center gap-2 mb-4">
+      <span class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Engineering Maturity</span>
+      <span :class="['text-xs font-semibold px-2 py-0.5 rounded-full', mEngColorClass]">
         M_Eng = {{ mEng }}
-      </v-chip>
+      </span>
     </div>
 
     <div v-for="dim in dimensions" :key="dim.key" class="mb-3">
-      <div class="d-flex justify-space-between align-center mb-1">
-        <span class="text-body-2">
-          <v-icon size="x-small" class="mr-1">{{ dim.icon }}</v-icon>
-          {{ dim.label }}
-        </span>
-        <span class="text-caption font-weight-bold">
-          Level {{ dim.level }} / 3
-          <span class="text-grey ml-1">(+{{ dim.score }})</span>
+      <div class="flex justify-between items-center mb-1">
+        <span class="text-xs text-gray-600">{{ dim.label }}</span>
+        <span class="text-xs font-semibold text-gray-700">
+          Level {{ dim.level }}/3
+          <span class="text-gray-400 ml-1">(+{{ dim.score }})</span>
         </span>
       </div>
-      <v-progress-linear
-        :model-value="(dim.level / 3) * 100"
-        :color="dim.color"
-        height="8"
-        rounded
-      />
-      <div class="text-caption text-grey mt-1">{{ levelLabels[dim.level] }}</div>
+      <div class="bg-gray-100 rounded-full h-2 overflow-hidden">
+        <div
+          class="h-2 rounded-full transition-all duration-500"
+          :class="dim.barColor"
+          :style="{ width: `${(dim.level / 3) * 100}%` }"
+        />
+      </div>
+      <div class="text-xs text-gray-400 mt-0.5">{{ levelLabels[dim.level] }}</div>
     </div>
   </div>
 </template>
@@ -42,45 +35,37 @@ const props = defineProps({
 })
 
 const mEng = computed(() => props.detail?.m_eng ?? 0)
-const mEngColor = computed(() => {
+const mEngColorClass = computed(() => {
   const v = mEng.value
-  if (v >= 0.3) return 'success'
-  if (v >= 0.15) return 'info'
-  if (v > 0) return 'warning'
-  return 'grey'
+  if (v >= 0.3) return 'bg-green-100 text-green-700'
+  if (v >= 0.15) return 'bg-blue-100 text-blue-700'
+  if (v > 0) return 'bg-amber-100 text-amber-700'
+  return 'bg-gray-100 text-gray-500'
 })
 
-const levelLabels = {
-  0: 'None',
-  1: 'Basic',
-  2: 'Production',
-  3: 'Advanced',
-}
+const levelLabels = { 0: 'None', 1: 'Basic', 2: 'Production', 3: 'Advanced' }
 
 const dimensions = computed(() => [
   {
     key: 'backend',
     label: 'Backend',
-    icon: 'mdi-server',
     level: props.detail?.backend_level ?? 0,
     score: props.detail?.backend_score ?? 0,
-    color: 'blue',
+    barColor: 'bg-blue-500',
   },
   {
     key: 'database',
     label: 'Database',
-    icon: 'mdi-database',
     level: props.detail?.database_level ?? 0,
     score: props.detail?.database_score ?? 0,
-    color: 'green',
+    barColor: 'bg-green-500',
   },
   {
     key: 'frontend',
     label: 'Frontend',
-    icon: 'mdi-monitor',
     level: props.detail?.frontend_level ?? 0,
     score: props.detail?.frontend_score ?? 0,
-    color: 'orange',
+    barColor: 'bg-orange-500',
   },
 ])
 </script>

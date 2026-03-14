@@ -11,6 +11,8 @@ from pydantic import BaseModel
 from app.database import (
     create_interview,
     create_interview_status,
+    create_manual_candidate,
+    delete_candidate,
     delete_interview,
     delete_interview_status,
     ensure_job_requirement,
@@ -43,6 +45,18 @@ OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 
 class ExportRequest(BaseModel):
     candidate_ids: list[int]
+
+
+class ManualCandidateCreate(BaseModel):
+    name: str
+    email: str | None = None
+    mobile: str | None = None
+    education_level: str | None = None
+    school: str | None = None
+    years_of_experience: str | None = None
+    skills_text: str | None = None
+    skill_tags: list[str] = []
+    desired_salary: str | None = None
 
 
 class InterestedRequest(BaseModel):
@@ -300,6 +314,30 @@ async def api_batch_match(background_tasks: BackgroundTasks):
         and not background_tasks.add_task(_run_match, c["id"], job_id)
     )
     return {"status": "queued", "count": queued, "job_id": job_id}
+
+
+# --- Manual candidate creation ---
+
+@router.post("/api/candidates/manual")
+async def api_create_manual_candidate(body: ManualCandidateCreate):
+    candidate_id = create_manual_candidate(
+        name=body.name,
+        email=body.email,
+        mobile=body.mobile,
+        education_level=body.education_level,
+        school=body.school,
+        years_of_experience=body.years_of_experience,
+        skills_text=body.skills_text,
+        skill_tags=body.skill_tags,
+        desired_salary=body.desired_salary,
+    )
+    return {"id": candidate_id, "name": body.name}
+
+
+@router.delete("/api/candidates/{candidate_id}")
+async def api_delete_candidate(candidate_id: int):
+    delete_candidate(candidate_id)
+    return {"deleted": candidate_id}
 
 
 # --- Interested ---

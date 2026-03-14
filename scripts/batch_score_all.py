@@ -1,6 +1,7 @@
 """Batch score ALL candidates using the rule-based scoring pipeline.
 
-Loads all candidate data in bulk, then scores without LLM/embedding calls.
+Loads all candidate data in bulk.  Embeddings are computed via LM Studio when
+the service is available; falls back to keyword-overlap automatically.
 
 Usage: .venv/bin/python scripts/batch_score_all.py
 """
@@ -27,7 +28,17 @@ from app.models import (
 )
 from app.scoring.education import score_education
 from app.scoring.engineering import score_engineering_maturity
-from app.scoring.experience import classify_experience_tier
+from app.scoring.experience import (
+    TIER_BASE_SCORES,
+    TIER_LABELS,
+    TIER_KEYWORDS,
+    DATA_SCALE_PATTERN,
+    SYSTEM_ARCH_PATTERN,
+    MODEL_SCALE_PATTERN,
+    VALID_METRIC_PATTERN,
+    _find_keywords,
+    classify_experience_tier,
+)
 from app.scoring.hard_filter import apply_hard_filters
 from app.scoring.skills import verify_skills
 
@@ -64,8 +75,8 @@ def load_all_candidates():
     return candidates
 
 
-def score_candidate(detail: dict, job_data: dict, hard_filter_config: dict) -> EnhancedMatchResult:
-    """Score a single candidate using rule-based pipeline only (no LLM/embedding)."""
+def score_candidate(detail: dict, job_data: dict, hard_filter_config: dict, job_text: str = "") -> EnhancedMatchResult:
+    """Score a single candidate using rule-based pipeline + optional embeddings."""
     work_experiences = detail.get("work_experiences", [])
     education_list = detail.get("education", [])
     skill_tags = detail.get("skill_tags", [])
@@ -81,6 +92,13 @@ def score_candidate(detail: dict, job_data: dict, hard_filter_config: dict) -> E
         )
         for ed in education_list
     ]
+    # Fallback: use flat candidate fields when no education table rows exist
+    if not edu_extracts and detail.get("school"):
+        edu_extracts = [EducationExtract(
+            school=detail.get("school", ""),
+            department=detail.get("major", ""),
+            degree_level=detail.get("education_level", ""),
+        )]
 
     # Hard filter
     if hard_filter_config:
@@ -99,26 +117,84 @@ def score_candidate(detail: dict, job_data: dict, hard_filter_config: dict) -> E
 
     # Score all dimensions
     edu_detail = score_education(edu_extracts, raw_markdown)
-    exp_detail = classify_experience_tier(work_experiences, skill_tags, raw_markdown)
+
+    # Use cached LLM tier if available; otherwise fall back to keyword classifier
+    cached_llm_tier = detail.get("llm_tier")  # pre-loaded from candidates table
+    if cached_llm_tier:
+        # Recompute keyword sub-scores with v2 position-based weighting
+        from app.scoring.experience import TAG_WEIGHT_FACTOR
+        evidence_parts = []
+        for we in work_experiences:
+            evidence_parts.append(we.get("job_description", "") or "")
+            evidence_parts.append(we.get("job_title", "") or "")
+            evidence_parts.append(we.get("job_skills", "") or "")
+        if raw_markdown:
+            evidence_parts.append(raw_markdown)
+        evidence_text = " ".join(evidence_parts)
+        tag_text = " ".join(skill_tags)
+        combined_text = evidence_text + " " + tag_text
+
+        all_evidence, total_stack_score = [], 0.0
+        for tier in [3, 2, 1]:
+            kw_map = TIER_KEYWORDS[tier]
+            evidence_hits = {kw for kw, _ in _find_keywords(evidence_text, kw_map)}
+            tag_hits = {kw for kw, _ in _find_keywords(tag_text, kw_map)}
+            for kw in evidence_hits | tag_hits:
+                weight = kw_map[kw]
+                if kw in evidence_hits:
+                    total_stack_score += weight
+                    all_evidence.append(f"[Tier {tier}] {kw}")
+                else:
+                    total_stack_score += weight * TAG_WEIGHT_FACTOR
+                    all_evidence.append(f"[Tier {tier}] {kw} (tag)")
+
+        complexity = 0.0
+        if DATA_SCALE_PATTERN.search(combined_text): complexity += 0.33
+        if SYSTEM_ARCH_PATTERN.search(combined_text): complexity += 0.33
+        if MODEL_SCALE_PATTERN.search(combined_text): complexity += 0.34
+        metric_score = min(len(VALID_METRIC_PATTERN.findall(combined_text)) * 0.25, 1.0)
+
+        llm_tier = max(1, min(int(cached_llm_tier), 3))
+        base = TIER_BASE_SCORES[llm_tier]
+        final_score = min(base + min(total_stack_score * 2, 10.0) + complexity * 5 + metric_score * 5, 100.0)
+        exp_detail = ExperienceTierDetail(
+            tier=llm_tier,
+            tier_label=TIER_LABELS[llm_tier],
+            evidence=all_evidence[:15],
+            tech_stack_score=round(total_stack_score, 2),
+            complexity_score=round(complexity, 2),
+            metric_score=round(metric_score, 2),
+            score=round(final_score, 1),
+        )
+    else:
+        exp_detail = classify_experience_tier(work_experiences, skill_tags, raw_markdown)
+
     eng_detail = score_engineering_maturity(work_experiences, skill_tags, raw_markdown)
     skill_detail = verify_skills(skill_tags, work_experiences)
+
+    # Semantic similarity via embedding (falls back to keyword overlap if unavailable)
+    semantic_sim = 0.0
+    if job_text:
+        from app.scoring.embeddings import build_candidate_embedding_text, compute_semantic_similarity
+        candidate_text = build_candidate_embedding_text(detail)
+        if candidate_text.strip():
+            semantic_sim = compute_semantic_similarity(candidate_text, job_text)
 
     s_ai = exp_detail.score
     m_eng = eng_detail.m_eng
     s_total = round(s_ai * (1 + m_eng), 1)
 
-    # Final score: weighted sum = 100 (no semantic similarity in batch mode)
     W_EXP = 0.35   # AI depth
     W_ENG = 0.20   # Engineering maturity
-    W_SEM = 0.20   # Semantic similarity (0 in batch mode)
+    W_SEM = 0.20   # Semantic similarity
     W_EDU = 0.15   # Education
     W_SKL = 0.10   # Skills
 
-    eng_score_normalized = min(m_eng / 0.5, 1.0) * 100.0
+    eng_score_normalized = min(m_eng / 0.7, 1.0) * 100.0
     overall = round(
         s_ai * W_EXP
         + eng_score_normalized * W_ENG
-        + 0.0 * W_SEM  # no embedding in batch
+        + semantic_sim * 100.0 * W_SEM
         + edu_detail.score * W_EDU
         + skill_detail.score * W_SKL,
         1,
@@ -129,11 +205,11 @@ def score_candidate(detail: dict, job_data: dict, hard_filter_config: dict) -> E
     from app.scoring.pipeline import _generate_tags, _generate_analysis, _build_analysis_text
     tags = _generate_tags(exp_detail, eng_detail, skill_detail)
     strengths, gaps, interview_suggestions = _generate_analysis(
-        edu_detail, exp_detail, eng_detail, skill_detail, 0.0,
+        edu_detail, exp_detail, eng_detail, skill_detail, semantic_sim,
     )
     analysis_text = _build_analysis_text(
         detail, edu_detail, exp_detail, eng_detail, skill_detail,
-        overall, s_ai, m_eng, 0.0,
+        overall, s_ai, m_eng, semantic_sim,
     )
 
     return EnhancedMatchResult(
@@ -148,7 +224,7 @@ def score_candidate(detail: dict, job_data: dict, hard_filter_config: dict) -> E
         skill_detail=skill_detail,
         passed_hard_filter=True,
         hard_filter_failures=[],
-        semantic_similarity=0.0,
+        semantic_similarity=round(semantic_sim, 4),
         tags=tags,
         analysis_text=analysis_text,
         strengths=strengths,
@@ -222,6 +298,15 @@ def main():
         json.dumps(job_data, ensure_ascii=False),
     )
     hard_filter_config = job_data.get("hard_filters", {})
+    job_text = json.dumps(job_data, ensure_ascii=False)
+
+    # Probe embedding service once so we know what to expect
+    from app.scoring.embeddings import get_embedding
+    test_emb = get_embedding("test")
+    if test_emb:
+        print("  Embedding service: OK (semantic similarity will be computed)", flush=True)
+    else:
+        print("  Embedding service: unavailable (keyword-overlap fallback)", flush=True)
 
     print("Loading all candidates from DB...", flush=True)
     t0 = time.time()
@@ -235,7 +320,7 @@ def main():
 
     for i, (cid, detail) in enumerate(candidates.items()):
         try:
-            results[cid] = score_candidate(detail, job_data, hard_filter_config)
+            results[cid] = score_candidate(detail, job_data, hard_filter_config, job_text)
         except Exception as e:
             failed += 1
             if failed <= 5:

@@ -123,11 +123,7 @@
     "leave_policy": "週休二日",
     "scheduling": null
   },
-  "hard_filters": {
-    "required_skills": ["Python"],
-    "required_frameworks": ["PyTorch", "TensorFlow"],
-    "required_keywords": ["Transformer", "Attention", "BERT", "LLM", "深度學習", "Deep Learning", "機器學習", "Machine Learning"]
-  },
+  "hard_filters": {},
   "scoring_weights": {
     "education": 0.4,
     "experience": 0.3,

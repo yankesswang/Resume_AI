@@ -1,14 +1,12 @@
 <template>
-  <v-card class="mb-5" elevation="1">
-    <v-card-title class="section-title d-flex align-center">
-      <v-icon v-if="icon" class="mr-2" color="primary">{{ icon }}</v-icon>
-      {{ title }}
-    </v-card-title>
-    <v-divider />
-    <v-card-text class="section-body">
+  <div class="rounded-xl border border-gray-300 bg-white shadow-sm mb-5 overflow-hidden">
+    <div class="px-5 py-3.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+      <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide">{{ title }}</h2>
+    </div>
+    <div class="p-5">
       <slot />
-    </v-card-text>
-  </v-card>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -17,16 +15,3 @@ defineProps({
   icon: { type: String, default: '' },
 })
 </script>
-
-<style scoped>
-.section-title {
-  font-size: 1.1rem !important;
-  font-weight: 700 !important;
-  padding: 16px 20px !important;
-  color: #212121;
-}
-.section-body {
-  padding: 16px 20px !important;
-  font-size: 0.95rem;
-}
-</style>

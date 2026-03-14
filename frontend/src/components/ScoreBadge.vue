@@ -1,7 +1,7 @@
 <template>
-  <v-chip :color="color" :variant="variant" :size="size">
+  <span :class="[baseClass, colorClass, sizeClass]">
     {{ label }}
-  </v-chip>
+  </span>
 </template>
 
 <script setup>
@@ -12,15 +12,19 @@ const props = defineProps({
   size: { type: String, default: 'default' },
 })
 
-const color = computed(() => {
-  if (props.score == null) return 'grey'
-  if (props.score >= 80) return 'success'
-  if (props.score >= 60) return 'info'
-  if (props.score >= 40) return 'warning'
-  return 'error'
+const colorClass = computed(() => {
+  if (props.score == null) return 'bg-gray-100 text-gray-500 border border-gray-200'
+  if (props.score >= 80) return 'bg-green-100 text-green-700'
+  if (props.score >= 60) return 'bg-blue-100 text-blue-700'
+  if (props.score >= 40) return 'bg-amber-100 text-amber-700'
+  return 'bg-red-100 text-red-700'
 })
 
-const variant = computed(() => (props.score == null ? 'outlined' : 'flat'))
+const sizeClass = computed(() =>
+  props.size === 'large' ? 'text-lg px-3 py-1' : 'text-xs px-2 py-0.5'
+)
+
+const baseClass = 'inline-flex items-center justify-center rounded-full font-semibold tabular-nums'
 
 const label = computed(() => (props.score != null ? String(Math.round(props.score)) : '--'))
 </script>

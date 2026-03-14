@@ -1,0 +1,106 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --color-accent: #2563EB;
+  --radius: 8px;
+
+  /* ── Dark theme: surface scale ────────────────────────────────────────────── */
+  /* bg-white  → main card / panel surface                                       */
+  /* gray-*    → inverted so higher numbers = lighter text on dark backgrounds  */
+  --color-white:    #161B22;
+  --color-gray-50:  #21262D;
+  --color-gray-100: #30363D;
+  --color-gray-200: #3D444D;
+  --color-gray-300: #565F6B;
+  --color-gray-400: #6E7781;
+  --color-gray-500: #8B949E;
+  --color-gray-600: #B1BAC4;
+  --color-gray-700: #C9D1D9;
+  --color-gray-800: #E6EDF3;
+  --color-gray-900: #F0F6FC;
+
+  /* ── Tinted chip / badge colours ──────────────────────────────────────────── */
+  /* *-50 / *-100 become dark tinted backgrounds; *-700 becomes bright text      */
+  --color-blue-50:    #0d1f32;
+  --color-blue-100:   #102a4e;
+  --color-blue-700:   #58A6FF;
+
+  --color-green-50:   #0a1f12;
+  --color-green-100:  #0f2318;
+  --color-green-700:  #56D364;
+
+  --color-amber-50:   #1f1500;
+  --color-amber-100:  #2d1f00;
+  --color-amber-700:  #E3B341;
+
+  --color-red-50:     #2d1010;
+  --color-red-100:    #3d1515;
+  --color-red-600:    #F85149;
+  --color-red-700:    #FF7B72;
+
+  --color-indigo-50:  #0e1228;
+  --color-indigo-100: #141930;
+  --color-indigo-700: #9391F4;
+
+  --color-purple-50:  #1a0d28;
+  --color-purple-100: #230f35;
+  --color-purple-700: #C084FC;
+
+  --color-sky-50:     #0a1d2e;
+  --color-sky-100:    #0d2540;
+  --color-sky-700:    #38BDF8;
+}
+
+/* text-white is used on colored buttons / badges — always keep it white */
+.text-white {
+  color: #ffffff !important;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0D1117;
+  color: #C9D1D9;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #30363D;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #565F6B;
+}
+
+/* Focus ring */
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}

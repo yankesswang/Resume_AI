@@ -1,13 +1,7 @@
 <template>
-  <v-chip
-    :color="tierColor"
-    :variant="variant"
-    :size="size"
-    class="font-weight-bold"
-  >
-    <v-icon v-if="showIcon" start size="small">{{ tierIcon }}</v-icon>
-    T{{ tier }} {{ tierLabel }}
-  </v-chip>
+  <span :class="[baseClass, colorClass, sizeClass]">
+    T{{ tier }} {{ displayLabel }}
+  </span>
 </template>
 
 <script setup>
@@ -17,19 +11,21 @@ const props = defineProps({
   tier: { type: Number, default: 1 },
   tierLabel: { type: String, default: '' },
   size: { type: String, default: 'default' },
-  variant: { type: String, default: 'flat' },
-  showIcon: { type: Boolean, default: true },
 })
 
 const tierConfig = {
-  1: { color: 'grey', icon: 'mdi-api', label: 'Wrapper' },
-  2: { color: 'blue', icon: 'mdi-database-search', label: 'RAG Architect' },
-  3: { color: 'purple', icon: 'mdi-brain', label: 'Model Tuner' },
-  4: { color: 'amber-darken-2', icon: 'mdi-rocket-launch', label: 'Inference Ops' },
+  1: { color: 'bg-gray-100 text-gray-600', label: 'Wrapper' },
+  2: { color: 'bg-blue-100 text-blue-700', label: 'RAG Architect' },
+  3: { color: 'bg-purple-100 text-purple-700', label: 'Model Tuner' },
+  4: { color: 'bg-amber-100 text-amber-700', label: 'Inference Ops' },
 }
 
 const config = computed(() => tierConfig[props.tier] || tierConfig[1])
-const tierColor = computed(() => config.value.color)
-const tierIcon = computed(() => config.value.icon)
-const tierLabel = computed(() => props.tierLabel || config.value.label)
+const colorClass = computed(() => config.value.color)
+const displayLabel = computed(() => props.tierLabel || config.value.label)
+
+const baseClass = 'inline-flex items-center rounded-full font-semibold'
+const sizeClass = computed(() =>
+  props.size === 'small' ? 'text-xs px-2 py-0.5' : 'text-sm px-2.5 py-1'
+)
 </script>
