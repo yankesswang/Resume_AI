@@ -9,16 +9,32 @@ dist/
 
 # User data - resumes, parsed output, databases
 data/
+data_*/
 output/
+output_*/
+*履歷*/
+reports/
+backups/
 *.db
+*.sqlite
+*.sqlite3
 *.csv
+*.zip
 *_candidates.json
 sample_candidates.json
+*.log
+*.pid
+*.tmp
 
 # Frontend
 frontend/node_modules/
 frontend/.vite/
 frontend/dist/
+
+# Local tool state
+.codegraph/
+.codex
+.claude/
 
 # IDE
 .vscode/
