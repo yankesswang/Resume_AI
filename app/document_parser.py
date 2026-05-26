@@ -105,12 +105,27 @@ class DocumentParser:
         images = None
         try:
             with self._timed("PDF Marker extraction"):
+                marker_config = {
+                    "pdftext_workers": pdftext_workers,
+                    "force_ocr": force_ocr,
+                }
+                for env_name, config_name in (
+                    ("MARKER_LAYOUT_BATCH_SIZE", "layout_batch_size"),
+                    ("MARKER_DETECTION_BATCH_SIZE", "detection_batch_size"),
+                    ("MARKER_RECOGNITION_BATCH_SIZE", "recognition_batch_size"),
+                    ("MARKER_TABLE_REC_BATCH_SIZE", "table_rec_batch_size"),
+                    ("MARKER_OCR_ERROR_BATCH_SIZE", "ocr_error_batch_size"),
+                ):
+                    value = os.environ.get(env_name)
+                    if value:
+                        marker_config[config_name] = int(value)
+                force_layout_block = os.environ.get("MARKER_FORCE_LAYOUT_BLOCK")
+                if force_layout_block:
+                    marker_config["force_layout_block"] = force_layout_block
+
                 converter = PdfConverter(
                     artifact_dict=create_model_dict(),
-                    config={
-                        "pdftext_workers": pdftext_workers,
-                        "force_ocr": force_ocr,
-                    },
+                    config=marker_config,
                 )
                 rendered = converter(pdf_path)
                 text, _, images = text_from_rendered(rendered)
@@ -227,14 +242,51 @@ class DocumentParser:
         Split a combined markdown (multiple resumes in one PDF)
         into individual candidate sections.
 
-        Each candidate section starts with '# 基本資料' and ends with
-        the privacy notice line.
+        Handles two formats produced by Marker:
+        1. Heading format:  ## 基本資料  (one heading per candidate)
+        2. Table-cell format: | 姓/名: | ... | (section header in first cell, no heading)
         """
-        # Split on '# 基本資料', '## 基本資料', '### 基本資料', etc.
-        parts = re.split(r'(?=^#{1,6} 基本資料$)', markdown, flags=re.MULTILINE)
-        # Filter out empty/whitespace-only parts (e.g. before the first match)
-        candidates = [p.strip() for p in parts if p.strip()]
-        return candidates
+        # Try heading-based split first
+        heading_positions = [m.start() for m in re.finditer(
+            r'(?:^|\n)#{1,6}\s+基本資料\s*\n', markdown
+        )]
+
+        # Also find table-cell-format candidates (| 姓/名: | ...)
+        # Each candidate starts a new block with 姓/名 as the first KV row
+        name_cell_positions = [m.start() for m in re.finditer(
+            r'\n(?=\| 姓[/／]名[:：])', markdown
+        )]
+
+        # Merge and deduplicate positions, keeping heading positions preferred
+        all_positions = sorted(set(heading_positions + name_cell_positions))
+
+        # Remove name_cell positions that are too close to a heading position (same candidate)
+        filtered = []
+        for pos in all_positions:
+            if any(abs(pos - h) < 200 for h in heading_positions if pos != h):
+                continue  # skip table-cell pos that's within 200 chars of a heading
+            filtered.append(pos)
+
+        if not filtered:
+            # Fallback: original heading-only split
+            parts = re.split(r'(?=^#{1,6} 基本資料$)', markdown, flags=re.MULTILINE)
+            return [p.strip() for p in parts if p.strip()]
+
+        # Build parts from positions
+        parts = []
+        for i, pos in enumerate(filtered):
+            end = filtered[i + 1] if i + 1 < len(filtered) else len(markdown)
+            chunk = markdown[pos:end].strip()
+            if chunk:
+                parts.append(chunk)
+
+        # Prepend any content before the first split position
+        if filtered[0] > 0:
+            pre = markdown[:filtered[0]].strip()
+            if pre:
+                parts.insert(0, pre)
+
+        return [p for p in parts if p.strip()]
 
     # ============================================================
     # DOCX parsing (Heading + Image)

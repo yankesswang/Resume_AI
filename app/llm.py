@@ -25,6 +25,7 @@ def _chat(messages: list[dict], temperature: float = 0.1, max_tokens: int = 4096
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        "thinking": {"type": "disabled"},  # disable Qwen3 chain-of-thought
     }
     resp = httpx.post(LM_STUDIO_URL, json=payload, timeout=300.0)
     if resp.status_code != 200:
@@ -49,8 +50,10 @@ def _truncate_to_fit(system_prompt: str, user_content: str, response_tokens: int
 
 
 def _strip_fences(text: str) -> str:
-    """Strip markdown code fences from LLM response."""
+    """Strip markdown code fences and Qwen3 <think> blocks from LLM response."""
     text = text.strip()
+    # Remove <think>...</think> blocks (Qwen3 chain-of-thought)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     if text.startswith("```"):
         # Remove opening fence (```json or ```)
         text = re.sub(r"^```\w*\n?", "", text)
@@ -168,6 +171,8 @@ def match_candidate_to_job(candidate: ResumeExtract, job: dict) -> MatchResultEx
 # Toggling this changes TIER_CLASSIFY_PROMPT_MD5, which auto-invalidates the DB cache.
 _INCLUDE_RAW_MARKDOWN = False
 
+TIER_LABELS_MAP = {1: "Wrapper", 2: "RAG Architect", 3: "AI Expert"}
+
 _TIER_CLASSIFY_PROMPT = """\
 You are an AI recruitment expert. Read the candidate's work experience, skills, and resume excerpt, \
 then classify their AI engineering depth into one of 3 tiers based on EVIDENCE DEPTH, not keyword frequency.
@@ -236,12 +241,17 @@ def classify_ai_tier(
         {"role": "user", "content": user_content},
     ]
 
-    raw = _chat(messages, temperature=0.1, max_tokens=512)
+    raw = _chat(messages, temperature=0.1, max_tokens=1024)
     cleaned = _strip_fences(raw)
 
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
+        # Try to extract partial JSON (truncated responses)
+        m = re.search(r'\{.*"tier"\s*:\s*(\d+)', cleaned, re.DOTALL)
+        if m:
+            tier = max(1, min(int(m.group(1)), 3))
+            return {"tier": tier, "tier_label": TIER_LABELS_MAP.get(tier, "Wrapper"), "evidence": [], "reasoning": "partial"}
         logger.error("LLM tier classification returned invalid JSON: %s", cleaned[:500])
         return {"tier": 1, "tier_label": "Wrapper", "evidence": [], "reasoning": "分類失敗"}
 

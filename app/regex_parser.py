@@ -781,7 +781,7 @@ def parse_resume_markdown(markdown: str) -> ResumeExtract:
     # Education — try standalone section first, then embedded in work section
     edu_text = sections.get("教育背景", "")
     if not edu_text:
-        # Try extracting from raw markdown as a standalone block
+        # Try extracting from raw markdown as a standalone block (heading form)
         edu_start_match = re.search(r"^#{1,4}\s+教育背景", markdown, re.MULTILINE)
         if edu_start_match:
             edu_end_match = re.search(
@@ -793,7 +793,23 @@ def parse_resume_markdown(markdown: str) -> ResumeExtract:
             else:
                 edu_text = markdown[edu_start_match.end():]
     if not edu_text:
-        # Fallback: look inside work section text
+        # Fallback: 教育背景 as a table cell header (Marker renders section title in any cell)
+        # Find the line containing 教育背景 in a table context
+        edu_cell_match = re.search(r"\|[^|\n]*教育背景[^|\n]*\|", markdown)
+        if edu_cell_match:
+            # Walk back to find start of this table (beginning of line)
+            line_start = markdown.rfind('\n', 0, edu_cell_match.start())
+            cell_start = line_start if line_start >= 0 else 0
+            edu_end_match = re.search(
+                r"\|\s*(?:求職條件|才能專[⻑長]|⾃我介紹|自我介紹|推薦[⼈人]|附件)\s*\|",
+                markdown[cell_start:],
+            )
+            if edu_end_match:
+                edu_text = markdown[cell_start:cell_start + edu_end_match.start()]
+            else:
+                edu_text = markdown[cell_start:]
+    if not edu_text:
+        # Last fallback: look inside work section text
         combined = work_section or ""
         if "教育背景" in combined:
             edu_start = combined.index("教育背景")

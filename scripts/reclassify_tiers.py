@@ -88,7 +88,7 @@ def classify_one(candidate: dict) -> dict:
 
     try:
         result = classify_ai_tier(work_experiences, skill_tags, raw_markdown)
-        tier = max(1, min(int(result.get("tier", 1)), 3))
+        tier = max(1, min(int(result.get("tier") or 1), 3))
         return {
             "candidate_id": cid,
             "name": candidate.get("name", ""),
