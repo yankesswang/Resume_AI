@@ -50,6 +50,28 @@
         <option v-for="t in tierItems" :key="t.value" :value="t.value">{{ t.title }}</option>
       </select>
 
+      <!-- Candidate Type -->
+      <select
+        v-model="filters.candidateType"
+        class="py-1.5 pl-2.5 pr-7 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition appearance-none w-28"
+      >
+        <option :value="null">身分</option>
+        <option value="實習">實習</option>
+        <option value="正職">工程師</option>
+      </select>
+
+      <!-- Import Batch -->
+      <select
+        v-if="importBatches.length"
+        v-model="filters.importBatchId"
+        class="py-1.5 pl-2.5 pr-7 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition appearance-none w-48"
+      >
+        <option :value="null">Batch</option>
+        <option v-for="batch in importBatches" :key="batch.id" :value="batch.id">
+          {{ batch.batch_name }} ({{ batch.total_candidates }})
+        </option>
+      </select>
+
       <!-- Skills autocomplete -->
       <div class="relative flex-shrink-0">
         <div
@@ -120,6 +142,36 @@
         >Passed</button>
 
         <button
+          @click="toggleDedupeStatus('unique')"
+          :class="[
+            'px-3 py-1.5 text-xs font-semibold rounded-lg border transition',
+            filters.dedupeStatus === 'unique'
+              ? 'bg-emerald-600 text-white border-emerald-600'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+          ]"
+        >Unique</button>
+
+        <button
+          @click="toggleDedupeStatus('duplicate')"
+          :class="[
+            'px-3 py-1.5 text-xs font-semibold rounded-lg border transition',
+            filters.dedupeStatus === 'duplicate'
+              ? 'bg-rose-600 text-white border-rose-600'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+          ]"
+        >Duplicate</button>
+
+        <button
+          @click="toggleDedupeStatus('review')"
+          :class="[
+            'px-3 py-1.5 text-xs font-semibold rounded-lg border transition',
+            filters.dedupeStatus === 'review'
+              ? 'bg-violet-600 text-white border-violet-600'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+          ]"
+        >Review</button>
+
+        <button
           @click="filters.bookmarkedOnly = !filters.bookmarkedOnly"
           :class="[
             'px-3 py-1.5 text-xs font-semibold rounded-lg border transition',
@@ -165,6 +217,7 @@ const props = defineProps({
   skillTags: { type: Array, default: () => [] },
   experienceRanges: { type: Array, default: () => ['0-2年', '3-5年', '5-10年', '10年+'] },
   scoreRanges: { type: Array, default: () => ['80+', '60-79', '40-59', '<40', 'No Score'] },
+  importBatches: { type: Array, default: () => [] },
 })
 
 const tierItems = [
@@ -222,6 +275,10 @@ function removeSkill(tag) {
   filters.selectedSkills = filters.selectedSkills.filter((s) => s !== tag)
 }
 
+function toggleDedupeStatus(status) {
+  filters.dedupeStatus = filters.dedupeStatus === status ? null : status
+}
+
 function onSkillFocus() {
   dropdownOpen.value = true
 }
@@ -269,6 +326,9 @@ const hasActiveFilters = computed(() =>
   filters.experienceRange ||
   filters.scoreRange ||
   filters.aiTier ||
+  filters.candidateType ||
+  filters.dedupeStatus ||
+  filters.importBatchId ||
   filters.topUniversityOnly ||
   filters.hardFilterPassedOnly ||
   filters.bookmarkedOnly

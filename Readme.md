@@ -8,8 +8,10 @@ AI-powered resume screening system. Upload PDF resumes, extract structured candi
 - **5-Dimension Scoring** — AI experience depth, engineering maturity, education, skills, semantic similarity
 - **LLM Integration** — optional [LM Studio](https://lmstudio.ai/) integration for AI tier classification and smart extraction
 - **Semantic Matching** — embedding-based cosine similarity with bilingual keyword-overlap fallback
-- **Vue 3 SPA** — filterable candidate list, detailed scorecards, bookmarks
-- **Batch Processing** — scripts for bulk ingestion, scoring, and LLM tier classification
+- **104 ZIP Import** — safe ZIP extraction, PDF parsing, and batch metadata tracking
+- **Non-destructive Dedupe** — marks candidates as `unique`, `duplicate`, or `review` without deleting records
+- **Vue 3 SPA** — filterable candidate list, detailed scorecards, bookmarks, batch and dedupe filters
+- **Batch Processing** — scripts for bulk ingestion, DB organization, scoring, and LLM tier classification
 
 ---
 
@@ -38,6 +40,16 @@ npm run dev        # → http://localhost:5173
 
 The Vite dev server proxies `/api`, `/output`, and `/upload` to the backend automatically.
 
+### Run Against a Specific DB
+
+For imported batches, point the backend at the target SQLite DB and parsed output directory:
+
+```bash
+DB_PATH=/path/to/resume_batch.db \
+OUTPUT_DIR=/path/to/output_batch \
+uv run python -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
 ### 3. Environment (optional)
 
 Create a `.env` in the project root:
@@ -53,6 +65,55 @@ EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5
 # Remote PDF worker — leave empty to parse locally
 WORKER_URL=
 ```
+
+---
+
+## 104 ZIP Import + Dedupe Workflow
+
+The current 104 workflow is:
+
+```
+104 ZIP → safe extract → PDF parsing → candidate rows → batch/file metadata → dedupe status → frontend filters
+```
+
+Use the one-command importer for a new 104 ZIP:
+
+```bash
+uv run python scripts/import_104_zip.py /path/to/104.zip --db resume_ai.db
+```
+
+To run LLM tier classification and scoring after import:
+
+```bash
+uv run python scripts/import_104_zip.py /path/to/104.zip --db resume_ai.db --run-llm-score
+```
+
+If a DB was already imported and only needs batch/dedupe metadata:
+
+```bash
+uv run python scripts/organize_resume_db.py \
+  --db unique_0522履歷-20260525T025222Z-3-001.db \
+  --batch-name '0522履歷-20260525T025222Z-3-001' \
+  --zip-path '0522履歷-20260525T025222Z-3-001.zip' \
+  --output-root 'output_unique_0522履歷-20260525T025222Z-3-001'
+```
+
+The DB organization step is non-destructive. It creates backups and marks dedupe status instead of deleting duplicate rows.
+
+### Import Metadata
+
+The organized DB uses these tables/views:
+
+| Object | Purpose |
+|--------|---------|
+| `import_batches` | One row per 104 ZIP import, including ZIP hash and aggregate counts |
+| `import_files` | One row per PDF, including parse status and candidate count |
+| `candidate_dedupe_status` | Per-candidate `unique` / `duplicate` / `review` status and match reasons |
+| `v_candidates_with_dedupe` | Candidate + batch + dedupe + score view |
+| `v_unique_candidates` | Unique candidates view |
+| `v_duplicate_candidates` | Duplicate candidates view |
+
+See [docs/104-zip-import-dedupe-workflow.md](docs/104-zip-import-dedupe-workflow.md) for the detailed Chinese workflow and current 0522 batch notes.
 
 ---
 
@@ -118,6 +179,7 @@ app/
     hard_filter.py       # Boolean gate for must-have requirements
 frontend/                # Vue 3 SPA (Vite + Tailwind CSS v4 + Pinia)
 scripts/                 # CLI utilities (see below)
+docs/                    # Operational workflow notes
 tests/                   # Unit and end-to-end tests
 ```
 
@@ -129,11 +191,16 @@ tests/                   # Unit and end-to-end tests
 |--------|------|-------------|
 | `POST` | `/api/upload` | Upload a PDF resume |
 | `GET` | `/api/candidates` | List all candidates with scores |
+| `GET` | `/api/candidates?scope=unique` | List candidates marked unique |
+| `GET` | `/api/candidates?scope=duplicate` | List candidates marked duplicate |
+| `GET` | `/api/candidates?scope=review` | List candidates that need manual duplicate review |
+| `GET` | `/api/candidates?batch_id={id}` | List candidates from a specific import batch |
 | `GET` | `/api/candidates/{id}` | Full candidate detail |
 | `GET` | `/api/candidates/{id}/scorecard` | Score breakdown with all dimensions |
 | `POST` | `/api/candidates/{id}/match` | Re-run scoring (async) |
 | `POST` | `/api/candidates/batch-match` | Score all candidates missing a result |
 | `GET` | `/api/filters` | Available filter options |
+| `GET` | `/api/import-batches` | List 104 import batches and aggregate dedupe counts |
 | `POST` | `/api/export/candidates` | Export selected candidates as JSON |
 | `POST` | `/api/export/candidates/csv` | Export selected candidates as CSV (UTF-8 BOM) |
 
@@ -142,16 +209,26 @@ tests/                   # Unit and end-to-end tests
 ## Scripts
 
 ```bash
+# Import and organize a 104 ZIP
+uv run python scripts/import_104_zip.py /path/to/104.zip --db resume_ai.db
+
+# Add/refresh import batch, file, and dedupe metadata for an existing DB
+uv run python scripts/organize_resume_db.py \
+  --db resume_ai.db \
+  --batch-name 'batch-name' \
+  --zip-path /path/to/104.zip \
+  --output-root /path/to/output_dir
+
 # Re-score all candidates using cached LLM tiers
 uv run python scripts/batch_score_all.py
 
 # Run LLM tier classification and cache results in DB
 uv run python scripts/reclassify_tiers.py [--limit N] [--force]
 
-# Bulk import markdown files from output/
-uv run python scripts/batch_import.py
+# Bulk import PDF files into the DB
+uv run python scripts/batch_import.py /path/to/resume.pdf --output-root output --save-split-md
 
-# Remove duplicate candidates (dedup by 104 code)
+# Preview destructive legacy dedup by 104 code. Prefer candidate_dedupe_status for normal use.
 uv run python scripts/dedup_candidates.py
 
 # Check LM Studio connectivity

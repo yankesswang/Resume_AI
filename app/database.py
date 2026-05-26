@@ -1,6 +1,8 @@
 import hashlib
 import json
+import re
 import sqlite3
+from datetime import date
 from pathlib import Path
 
 from app.models import (
@@ -13,7 +15,8 @@ from app.models import (
     WorkExperienceExtract,
 )
 
-DB_PATH = Path(__file__).resolve().parent.parent / "resume_ai.db"
+import os as _os
+DB_PATH = Path(_os.environ.get("DB_PATH", str(Path(__file__).resolve().parent.parent / "resume_ai.db")))
 
 
 def _connect() -> sqlite3.Connection:
@@ -22,6 +25,39 @@ def _connect() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def _parse_year_month(raw: str | None) -> tuple[int, int] | None:
+    if not raw:
+        return None
+    match = re.search(r"(\d{4})[/-](\d{1,2})", raw.strip())
+    if not match:
+        return None
+    month = int(match.group(2))
+    if month < 1 or month > 12:
+        return None
+    return int(match.group(1)), month
+
+
+def calc_candidate_type(education_list: list[dict]) -> str:
+    """Classify hiring type from education: current students graduating after this June are interns."""
+    current_year = date.today().year
+    in_school_keywords = ("就學中", "在學", "肄業中", "修業中")
+
+    for edu in education_list:
+        status = (edu.get("status") or "").strip()
+        date_end = (edu.get("date_end") or "").strip()
+        is_still_studying = any(keyword in status for keyword in in_school_keywords)
+        grad = _parse_year_month(date_end)
+
+        if is_still_studying:
+            if not grad:
+                return "實習"
+            grad_year, grad_month = grad
+            if grad_year > current_year or (grad_year == current_year and grad_month > 6):
+                return "實習"
+
+    return "正職"
 
 
 def init_db():
@@ -397,23 +433,85 @@ def insert_candidate(
     return candidate_id
 
 
-def get_all_candidates_summary() -> list[dict]:
+def _dedupe_status_exists(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='candidate_dedupe_status'"
+    ).fetchone()
+    return row is not None
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone()
+    return row is not None
+
+
+def get_all_candidates_summary(scope: str | None = None, batch_id: int | None = None) -> list[dict]:
     conn = _connect()
+    use_dedupe = _dedupe_status_exists(conn)
+    dedupe_scope = scope if scope in {"unique", "duplicate", "review"} else None
+    if dedupe_scope and not use_dedupe:
+        conn.close()
+        return []
+
+    dedupe_select = (
+        """, d.is_unique AS is_unique_candidate,
+                  d.dedupe_status, d.confidence,
+                  d.strong_match_count, d.match_types AS dedupe_match_types,
+                  d.matched_old_dbs, d.matched_old_refs,
+                  d.weak_name_birth_count, d.internal_duplicate_key,
+                  d.reason AS dedupe_reason"""
+        if use_dedupe
+        else """, NULL AS is_unique_candidate,
+                  NULL AS dedupe_status, NULL AS confidence,
+                  0 AS strong_match_count, '[]' AS dedupe_match_types,
+                  '[]' AS matched_old_dbs, '[]' AS matched_old_refs,
+                  0 AS weak_name_birth_count, NULL AS internal_duplicate_key,
+                  NULL AS dedupe_reason"""
+    )
+    dedupe_join = (
+        "JOIN candidate_dedupe_status d ON c.id = d.candidate_id"
+        if dedupe_scope
+        else (
+            "LEFT JOIN candidate_dedupe_status d ON c.id = d.candidate_id"
+            if use_dedupe
+            else ""
+        )
+    )
+    where_parts: list[str] = []
+    params: list[object] = []
+    if dedupe_scope == "unique":
+        where_parts.append("d.is_unique = 1")
+    elif dedupe_scope == "duplicate":
+        where_parts.append("d.is_unique = 0")
+    elif dedupe_scope == "review":
+        where_parts.append("d.dedupe_status = 'review'")
+    if batch_id is not None:
+        where_parts.append("c.import_batch_id = ?")
+        params.append(batch_id)
+    where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+
     rows = conn.execute(
-        """SELECT c.id, c.name, c.code_104, c.birth_year, c.education_level, c.school, c.major,
+        f"""SELECT c.id, c.name, c.code_104, c.birth_year, c.education_level, c.school, c.major,
+                  c.import_batch_id, c.import_file_id,
                   c.years_of_experience, c.ideal_positions,
                   c.desired_job_categories, c.skill_tags,
                   c.photo_path, c.source_md_path, c.interested, c.invitation_sent,
                   m.overall_score, m.s_ai, m.m_eng, m.s_total,
                   m.experience_detail, m.passed_hard_filter, m.tags
+                  {dedupe_select}
            FROM candidates c
+           {dedupe_join}
            LEFT JOIN match_results m ON c.id = m.candidate_id
-           ORDER BY c.id DESC"""
+           {where_clause}
+           ORDER BY c.id DESC""",
+        params,
     ).fetchall()
 
     # Fetch all education records grouped by candidate
     edu_rows = conn.execute(
-        "SELECT candidate_id, school, department, degree_level FROM education ORDER BY candidate_id, seq"
+        "SELECT candidate_id, school, department, degree_level, status, date_end FROM education ORDER BY candidate_id, seq"
     ).fetchall()
     conn.close()
 
@@ -428,7 +526,9 @@ def get_all_candidates_summary() -> list[dict]:
         d["ideal_positions"] = json.loads(d["ideal_positions"] or "[]")
         d["desired_job_categories"] = json.loads(d["desired_job_categories"] or "[]")
         d["skill_tags"] = json.loads(d["skill_tags"] or "[]")
-        d["education"] = edu_map.get(d["id"], [])
+        edu_list = edu_map.get(d["id"], [])
+        d["education"] = edu_list
+        d["candidate_type"] = calc_candidate_type(edu_list)
         # Parse enhanced scoring fields
         if d.get("experience_detail"):
             d["experience_detail"] = json.loads(d["experience_detail"])
@@ -440,6 +540,11 @@ def get_all_candidates_summary() -> list[dict]:
             d["passed_hard_filter"] = bool(d["passed_hard_filter"])
         d["interested"] = bool(d.get("interested", 0))
         d["invitation_sent"] = bool(d.get("invitation_sent", 0))
+        if d.get("is_unique_candidate") is not None:
+            d["is_unique_candidate"] = bool(d["is_unique_candidate"])
+        d["dedupe_match_types"] = json.loads(d.get("dedupe_match_types") or "[]")
+        d["matched_old_dbs"] = json.loads(d.get("matched_old_dbs") or "[]")
+        d["matched_old_refs"] = json.loads(d.get("matched_old_refs") or "[]")
         results.append(d)
     return results
 
@@ -469,6 +574,7 @@ def get_candidate_detail(candidate_id: int) -> dict | None:
             (candidate_id,),
         ).fetchall()
     ]
+    candidate["candidate_type"] = calc_candidate_type(candidate["education"])
     candidate["skills"] = [
         dict(r) for r in conn.execute(
             "SELECT * FROM skills WHERE candidate_id = ?",
@@ -649,7 +755,10 @@ def get_candidates_export_data(candidate_ids: list[int]) -> list[dict]:
                    m.overall_score, m.education_score, m.experience_score,
                    m.skills_score, m.s_ai, m.m_eng, m.s_total,
                    m.strengths, m.gaps, m.analysis_text,
-                   m.experience_detail, m.tags, m.passed_hard_filter
+                   m.experience_detail, m.tags, m.passed_hard_filter,
+                   (SELECT resume_notes FROM interviews
+                    WHERE candidate_id = c.id AND resume_notes IS NOT NULL AND resume_notes != ''
+                    ORDER BY id DESC LIMIT 1) AS resume_notes
             FROM candidates c
             LEFT JOIN match_results m ON c.id = m.candidate_id
             WHERE c.id IN ({placeholders})
@@ -659,7 +768,7 @@ def get_candidates_export_data(candidate_ids: list[int]) -> list[dict]:
 
     # Fetch education and work experiences
     edu_rows = conn.execute(
-        f"SELECT candidate_id, school, department, degree_level, date_start, date_end "
+        f"SELECT candidate_id, school, department, degree_level, date_start, date_end, status "
         f"FROM education WHERE candidate_id IN ({placeholders}) ORDER BY candidate_id, seq",
         candidate_ids,
     ).fetchall()
@@ -692,22 +801,70 @@ def get_candidates_export_data(candidate_ids: list[int]) -> list[dict]:
         if d.get("passed_hard_filter") is not None:
             d["passed_hard_filter"] = bool(d["passed_hard_filter"])
         d["education"] = edu_map.get(d["id"], [])
+        d["candidate_type"] = calc_candidate_type(d["education"])
         d["work_experiences"] = work_map.get(d["id"], [])
         results.append(d)
     return results
 
 
-def get_filter_options() -> dict:
+def get_filter_options(scope: str | None = None, batch_id: int | None = None) -> dict:
     """Return distinct filter options for the frontend."""
     conn = _connect()
+    use_dedupe = _dedupe_status_exists(conn)
+    dedupe_scope = scope if scope in {"unique", "duplicate", "review"} else None
+    if dedupe_scope and not use_dedupe:
+        conn.close()
+        return {
+            "education_levels": [],
+            "skill_tags": [],
+            "experience_ranges": ["0-2年", "3-5年", "5-10年", "10年+"],
+            "score_ranges": ["80+", "60-79", "40-59", "<40", "No Score"],
+            "candidate_types": ["實習", "正職"],
+        }
+
+    dedupe_join = "JOIN candidate_dedupe_status d ON c.id = d.candidate_id" if dedupe_scope else ""
+    skill_dedupe_join = "JOIN candidate_dedupe_status d ON s.candidate_id = d.candidate_id" if dedupe_scope else ""
+
+    where_parts = ["c.education_level IS NOT NULL", "c.education_level != ''"]
+    skill_where_parts = ["s.skill_name IS NOT NULL", "s.skill_name != ''"]
+    params: list[object] = []
+    skill_params: list[object] = []
+    if dedupe_scope == "unique":
+        where_parts.append("d.is_unique = 1")
+        skill_where_parts.append("d.is_unique = 1")
+    elif dedupe_scope == "duplicate":
+        where_parts.append("d.is_unique = 0")
+        skill_where_parts.append("d.is_unique = 0")
+    elif dedupe_scope == "review":
+        where_parts.append("d.dedupe_status = 'review'")
+        skill_where_parts.append("d.dedupe_status = 'review'")
+    if batch_id is not None:
+        where_parts.append("c.import_batch_id = ?")
+        skill_where_parts.append(
+            "s.candidate_id IN (SELECT id FROM candidates WHERE import_batch_id = ?)"
+        )
+        params.append(batch_id)
+        skill_params.append(batch_id)
+    where_clause = " AND ".join(where_parts)
+    skill_where_clause = " AND ".join(skill_where_parts)
+
     education_levels = [
         r[0] for r in conn.execute(
-            "SELECT DISTINCT education_level FROM candidates WHERE education_level IS NOT NULL AND education_level != '' ORDER BY education_level"
+            f"""SELECT DISTINCT c.education_level
+                FROM candidates c
+                {dedupe_join}
+                WHERE {where_clause}
+                ORDER BY c.education_level""",
+            params,
         ).fetchall()
     ]
     skill_tags = sorted({
         r[0] for r in conn.execute(
-            "SELECT DISTINCT skill_name FROM skills WHERE skill_name IS NOT NULL AND skill_name != ''"
+            f"""SELECT DISTINCT s.skill_name
+                FROM skills s
+                {skill_dedupe_join}
+                WHERE {skill_where_clause}""",
+            skill_params,
         ).fetchall()
     })
     conn.close()
@@ -716,7 +873,27 @@ def get_filter_options() -> dict:
         "skill_tags": skill_tags,
         "experience_ranges": ["0-2年", "3-5年", "5-10年", "10年+"],
         "score_ranges": ["80+", "60-79", "40-59", "<40", "No Score"],
+        "candidate_types": ["實習", "正職"],
     }
+
+
+def get_import_batches() -> list[dict]:
+    """Return import batch metadata for frontend filters."""
+    conn = _connect()
+    if not _table_exists(conn, "import_batches"):
+        conn.close()
+        return []
+    rows = conn.execute(
+        """
+        SELECT id, batch_name, source_zip_path, status, created_at, finished_at,
+               total_files, total_candidates, unique_count, duplicate_count,
+               review_count, failed_count, notes
+          FROM import_batches
+         ORDER BY id DESC
+        """
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def _md5(text: str) -> str:

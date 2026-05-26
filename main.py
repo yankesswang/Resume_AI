@@ -1,10 +1,8 @@
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-
-from dotenv import load_dotenv
-load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +15,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 JOB_REQ_PATH = Path(__file__).resolve().parent / "job_requirement.json"
-OUTPUT_DIR = Path(__file__).resolve().parent / "output"
+ROOT_DIR = Path(__file__).resolve().parent
+DEFAULT_OUTPUT_DIR = ROOT_DIR / "output_20260429" if (ROOT_DIR / "output_20260429").exists() else ROOT_DIR / "output"
+OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", str(DEFAULT_OUTPUT_DIR)))
 
 
 @asynccontextmanager
@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Resume AI", lifespan=lifespan)
 
-# CORS for Vue dev server (Vite proxy handles /api in production builds)
+# CORS for Electron frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

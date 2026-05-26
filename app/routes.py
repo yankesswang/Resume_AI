@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import logging
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, UploadFile
@@ -21,6 +22,7 @@ from app.database import (
     get_candidate_detail,
     get_candidates_export_data,
     get_filter_options,
+    get_import_batches,
     get_interested_ids,
     get_interview_statuses,
     get_invitation_sent_ids,
@@ -40,7 +42,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 JOB_REQ_PATH = Path(__file__).resolve().parent.parent / "job_requirement.json"
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_OUTPUT_DIR = ROOT_DIR / "output_20260429" if (ROOT_DIR / "output_20260429").exists() else ROOT_DIR / "output"
+OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", str(DEFAULT_OUTPUT_DIR)))
 
 
 class ExportRequest(BaseModel):
@@ -122,10 +126,18 @@ def _build_photo_cache() -> dict[str, str]:
 
 
 def _extract_output_relative_dir(md_path: str) -> str:
-    """Extract the directory relative to 'output/' from a source_md_path."""
-    idx = md_path.find("output/")
+    """Extract the directory relative to the mounted output directory."""
+    output_name = OUTPUT_DIR.name
+    marker = f"{output_name}/"
+    idx = md_path.find(marker)
     if idx != -1:
-        rel = md_path[idx + len("output/"):]
+        rel = md_path[idx + len(marker):]
+        return str(Path(rel).parent)
+
+    legacy_marker = "output/"
+    idx = md_path.find(legacy_marker)
+    if idx != -1:
+        rel = md_path[idx + len(legacy_marker):]
         return str(Path(rel).parent)
     return ""
 
@@ -197,8 +209,8 @@ async def api_upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = F
 # --- Candidates ---
 
 @router.get("/api/candidates")
-async def api_candidates():
-    candidates = get_all_candidates_summary()
+async def api_candidates(scope: str | None = None, batch_id: int | None = None):
+    candidates = get_all_candidates_summary(scope=scope, batch_id=batch_id)
     for c in candidates:
         c["photo_url"] = _resolve_photo_url(c)
     return candidates
@@ -416,8 +428,13 @@ async def api_delete_interview_status(status_id: int):
 # --- Filters ---
 
 @router.get("/api/filters")
-async def api_filters():
-    return get_filter_options()
+async def api_filters(scope: str | None = None, batch_id: int | None = None):
+    return get_filter_options(scope=scope, batch_id=batch_id)
+
+
+@router.get("/api/import-batches")
+async def api_import_batches():
+    return get_import_batches()
 
 
 # --- Export ---
@@ -441,8 +458,8 @@ async def api_export_candidates_csv(body: ExportRequest):
     writer = csv.writer(output)
 
     writer.writerow([
-        "ID", "姓名", "英文名", "104代碼", "年齡", "學歷", "學校", "科系",
-        "年資", "技能", "Email", "手機", "期望薪資",
+        "ID", "姓名", "Email", "備註", "英文名", "104代碼", "年齡", "學歷", "學校", "科系",
+        "年資", "技能", "手機", "期望薪資",
         "總分", "學歷分", "經歷分", "技能分", "AI分", "工程分", "加權總分",
         "AI Tier", "優勢", "不足", "分析", "工作經歷",
     ])
@@ -464,6 +481,8 @@ async def api_export_candidates_csv(body: ExportRequest):
         writer.writerow([
             c.get("id", ""),
             c.get("name", ""),
+            c.get("email", ""),
+            c.get("resume_notes", "") or "",
             c.get("english_name", ""),
             c.get("code_104", ""),
             c.get("age", ""),
@@ -472,7 +491,6 @@ async def api_export_candidates_csv(body: ExportRequest):
             c.get("major", ""),
             c.get("years_of_experience", ""),
             ", ".join(c.get("skill_tags", [])),
-            c.get("email", ""),
             c.get("mobile1", ""),
             c.get("desired_salary", ""),
             c.get("overall_score", ""),

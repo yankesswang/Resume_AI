@@ -26,5 +26,9 @@ const sizeClass = computed(() =>
 
 const baseClass = 'inline-flex items-center justify-center rounded-full font-semibold tabular-nums'
 
-const label = computed(() => (props.score != null ? String(Math.round(props.score)) : '--'))
+const label = computed(() => {
+  if (props.score == null) return '--'
+  const value = Number(props.score)
+  return Number.isFinite(value) ? value.toFixed(1) : '--'
+})
 </script>

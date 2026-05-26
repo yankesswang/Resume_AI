@@ -91,6 +91,15 @@
                 </svg>
               </button>
               <span v-if="candidate.english_name" class="text-base text-gray-400 font-normal">{{ candidate.english_name }}</span>
+              <span
+                v-if="candidate.candidate_type"
+                :class="[
+                  'text-xs font-semibold border rounded-full px-2 py-0.5 whitespace-nowrap',
+                  candidate.candidate_type === '實習'
+                    ? 'bg-sky-50 text-sky-700 border-sky-200'
+                    : 'bg-slate-50 text-slate-700 border-slate-200'
+                ]"
+              >{{ candidate.candidate_type === '實習' ? '實習' : '工程師' }}</span>
             </div>
 
             <!-- 104 Code -->

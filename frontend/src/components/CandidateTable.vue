@@ -82,6 +82,23 @@
                   class="text-xs font-semibold bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-2 py-0.5 whitespace-nowrap"
                 >感興趣</span>
                 <span
+                  v-if="item.candidate_type"
+                  :class="[
+                    'text-xs font-semibold border rounded-full px-2 py-0.5 whitespace-nowrap',
+                    item.candidate_type === '實習'
+                      ? 'bg-sky-50 text-sky-700 border-sky-200'
+                      : 'bg-slate-50 text-slate-700 border-slate-200'
+                  ]"
+                >{{ item.candidate_type === '實習' ? '實習' : '工程師' }}</span>
+                <span
+                  v-if="item.dedupe_status"
+                  :class="dedupeBadgeClass(item.dedupe_status)"
+                >{{ dedupeLabel(item.dedupe_status) }}</span>
+                <span
+                  v-if="item.overall_score != null"
+                  class="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5 whitespace-nowrap tabular-nums"
+                >分數 {{ formatScore(item.overall_score) }}</span>
+                <span
                   v-if="invitations.has(item.id)"
                   class="text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-full px-2 py-0.5 whitespace-nowrap"
                 >邀請已發</span>
@@ -200,7 +217,7 @@ const columns = [
   { title: '年資', key: 'years_of_experience', width: '90px' },
   { title: 'AI Tier', key: 'ai_tier', width: '140px' },
   { title: '技能', key: 'skill_tags', sortable: false },
-  { title: '分數', key: 'overall_score', width: '80px' },
+  { title: 'Candidate 分數', key: 'overall_score', width: '120px' },
 ]
 
 function toggleSort(key) {
@@ -252,6 +269,25 @@ function calcAge(birthYear) {
   const year = parseInt(birthYear, 10)
   if (isNaN(year) || year < 1900) return null
   return new Date().getFullYear() - year
+}
+
+function formatScore(score) {
+  const value = Number(score)
+  if (!Number.isFinite(value)) return '--'
+  return value.toFixed(1)
+}
+
+function dedupeLabel(status) {
+  if (status === 'duplicate') return 'Duplicate'
+  if (status === 'review') return 'Review'
+  return 'Unique'
+}
+
+function dedupeBadgeClass(status) {
+  const base = 'text-xs font-semibold border rounded-full px-2 py-0.5 whitespace-nowrap'
+  if (status === 'duplicate') return `${base} bg-rose-50 text-rose-700 border-rose-200`
+  if (status === 'review') return `${base} bg-violet-50 text-violet-700 border-violet-200`
+  return `${base} bg-emerald-50 text-emerald-700 border-emerald-200`
 }
 
 function parseYearsOfExperience(raw) {
@@ -362,7 +398,10 @@ const filteredCandidates = computed(() =>
     if (filters.topUniversityOnly && !isTopUniversity(c)) return false
     if (filters.aiTier && c.experience_detail?.tier !== filters.aiTier) return false
     if (filters.hardFilterPassedOnly && c.passed_hard_filter === false) return false
+    if (filters.dedupeStatus && c.dedupe_status !== filters.dedupeStatus) return false
+    if (filters.importBatchId && c.import_batch_id !== Number(filters.importBatchId)) return false
     if (filters.bookmarkedOnly && !bookmarks.has(c.id)) return false
+    if (filters.candidateType && c.candidate_type !== filters.candidateType) return false
     return true
   }).map((c) => ({ ...c, age: calcAge(c.birth_year), overall_score: c.overall_score ?? null }))
 )

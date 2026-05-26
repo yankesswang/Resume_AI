@@ -22,6 +22,13 @@
           Candidates
         </router-link>
         <router-link
+          to="/unique"
+          class="px-3 py-1 rounded-md text-sm font-medium transition-colors"
+          :class="$route.path === '/unique' ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'"
+        >
+          Unique
+        </router-link>
+        <router-link
           to="/bookmarks"
           class="px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5"
           :class="$route.path === '/bookmarks' ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'"

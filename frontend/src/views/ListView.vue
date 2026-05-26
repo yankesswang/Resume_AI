@@ -2,14 +2,16 @@
   <div class="flex flex-col h-full overflow-hidden">
     <!-- Toolbar -->
     <div class="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-100 shrink-0">
-      <div class="flex items-center gap-2 text-sm text-gray-500">
+      <div class="flex items-center gap-2 text-sm text-gray-500 min-w-0">
+        <span class="font-semibold text-gray-900 whitespace-nowrap">{{ props.title }}</span>
+        <span class="text-gray-300">/</span>
         <template v-if="candidates.length">
           <span class="font-semibold text-gray-700">{{ tableRef?.filteredCount ?? candidates.length }}</span>
           <span v-if="tableRef?.filteredCount != null && tableRef.filteredCount !== candidates.length" class="text-gray-400">of {{ candidates.length }}</span>
           <span>candidates</span>
         </template>
       </div>
-      <div class="flex items-center gap-2">
+      <div v-if="!props.scope" class="flex items-center gap-2">
         <button
           @click="batchMatchAll"
           :disabled="batchRunning"
@@ -62,6 +64,7 @@
           :skill-tags="filterOptions.skill_tags"
           :experience-ranges="filterOptions.experience_ranges"
           :score-ranges="filterOptions.score_ranges"
+          :import-batches="importBatches"
         />
         <CandidateTable ref="tableRef" :candidates="candidates" />
       </template>
@@ -128,7 +131,7 @@ export default { name: 'ListView' }
 <script setup>
 import { ref, onMounted, onActivated, nextTick } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
-import { fetchCandidates, fetchFilters, uploadPdf, batchMatch } from '../api'
+import { fetchCandidates, fetchFilters, fetchImportBatches, uploadPdf, batchMatch } from '../api'
 import { useBookmarkStore } from '../stores/bookmarks'
 import { useInvitationStore } from '../stores/invitations'
 import { useFilterStore } from '../stores/filters'
@@ -139,8 +142,14 @@ const bookmarks = useBookmarkStore()
 const invitations = useInvitationStore()
 const filterStore = useFilterStore()
 
+const props = defineProps({
+  scope: { type: String, default: null },
+  title: { type: String, default: 'Candidates' },
+})
+
 const tableRef = ref(null)
 const candidates = ref([])
+const importBatches = ref([])
 const filterOptions = ref({ education_levels: [], skill_tags: [], experience_ranges: [], score_ranges: [] })
 const showUpload = ref(false)
 const uploadFile = ref(null)
@@ -155,9 +164,14 @@ async function loadData() {
   loadError.value = false
   loadingData.value = true
   try {
-    const [cands, filters] = await Promise.all([fetchCandidates(), fetchFilters()])
+    const [cands, filters, batches] = await Promise.all([
+      fetchCandidates({ scope: props.scope }),
+      fetchFilters({ scope: props.scope }),
+      fetchImportBatches(),
+    ])
     candidates.value = cands
     filterOptions.value = filters
+    importBatches.value = batches
     // Guard: if "No Score" filter is saved but all candidates now have scores
     // (e.g. after running batch_score_all.py), auto-clear the stale filter so
     // the table isn't silently empty.

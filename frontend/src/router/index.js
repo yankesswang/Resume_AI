@@ -6,6 +6,12 @@ import CalendarView from '../views/CalendarView.vue'
 
 const routes = [
   { path: '/', name: 'list', component: ListView },
+  {
+    path: '/unique',
+    name: 'unique',
+    component: ListView,
+    props: { scope: 'unique', title: 'Unique Candidates' },
+  },
   { path: '/candidate/:id', name: 'detail', component: DetailView, props: true },
   { path: '/bookmarks', name: 'bookmarks', component: BookmarksView },
   { path: '/calendar', name: 'calendar', component: CalendarView },

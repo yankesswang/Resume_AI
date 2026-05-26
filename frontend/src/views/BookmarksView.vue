@@ -131,6 +131,15 @@
                       <span v-else>{{ item.name?.charAt(0) || '?' }}</span>
                     </div>
                     <span class="font-semibold text-gray-900 whitespace-nowrap hover:text-blue-600 transition-colors">{{ item.name || '—' }}</span>
+                    <span
+                      v-if="item.candidate_type"
+                      :class="[
+                        'text-xs font-semibold border rounded-full px-2 py-0.5 whitespace-nowrap',
+                        item.candidate_type === '實習'
+                          ? 'bg-sky-50 text-sky-700 border-sky-200'
+                          : 'bg-slate-50 text-slate-700 border-slate-200'
+                      ]"
+                    >{{ item.candidate_type === '實習' ? '實習' : '工程師' }}</span>
                     <!-- Per-row save indicator -->
                     <svg v-if="rowSaved[item.id]" class="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />

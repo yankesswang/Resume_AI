@@ -24,6 +24,9 @@ export const useFilterStore = defineStore('filters', () => {
   const aiTier = ref(saved?.aiTier ?? null)
   const hardFilterPassedOnly = ref(saved?.hardFilterPassedOnly ?? false)
   const bookmarkedOnly = ref(saved?.bookmarkedOnly ?? false)
+  const candidateType = ref(saved?.candidateType ?? null)
+  const dedupeStatus = ref(saved?.dedupeStatus ?? (saved?.uniqueOnly ? 'unique' : null))
+  const importBatchId = ref(saved?.importBatchId ?? null)
 
   function persist() {
     localStorage.setItem(
@@ -38,11 +41,14 @@ export const useFilterStore = defineStore('filters', () => {
         aiTier: aiTier.value,
         hardFilterPassedOnly: hardFilterPassedOnly.value,
         bookmarkedOnly: bookmarkedOnly.value,
+        candidateType: candidateType.value,
+        dedupeStatus: dedupeStatus.value,
+        importBatchId: importBatchId.value,
       })
     )
   }
 
-  watch([searchName, educationLevel, selectedSkills, experienceRange, scoreRange, topUniversityOnly, aiTier, hardFilterPassedOnly, bookmarkedOnly], persist, { deep: true })
+  watch([searchName, educationLevel, selectedSkills, experienceRange, scoreRange, topUniversityOnly, aiTier, hardFilterPassedOnly, bookmarkedOnly, candidateType, dedupeStatus, importBatchId], persist, { deep: true })
 
   function clearAll() {
     searchName.value = ''
@@ -54,6 +60,9 @@ export const useFilterStore = defineStore('filters', () => {
     aiTier.value = null
     hardFilterPassedOnly.value = false
     bookmarkedOnly.value = false
+    candidateType.value = null
+    dedupeStatus.value = null
+    importBatchId.value = null
     localStorage.removeItem(STORAGE_KEY)
   }
 
@@ -67,6 +76,9 @@ export const useFilterStore = defineStore('filters', () => {
     aiTier,
     hardFilterPassedOnly,
     bookmarkedOnly,
+    candidateType,
+    dedupeStatus,
+    importBatchId,
     clearAll,
   }
 })

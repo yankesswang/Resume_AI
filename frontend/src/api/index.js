@@ -4,8 +4,15 @@ const api = axios.create({
   baseURL: '',
 })
 
-export function fetchCandidates() {
-  return api.get('/api/candidates').then((r) => r.data)
+function buildParams(options = {}) {
+  const params = {}
+  if (options.scope) params.scope = options.scope
+  if (options.batchId) params.batch_id = options.batchId
+  return params
+}
+
+export function fetchCandidates(options = {}) {
+  return api.get('/api/candidates', { params: buildParams(options) }).then((r) => r.data)
 }
 
 export function fetchCandidate(id) {
@@ -28,8 +35,12 @@ export function batchMatch() {
   return api.post('/api/candidates/batch-match').then((r) => r.data)
 }
 
-export function fetchFilters() {
-  return api.get('/api/filters').then((r) => r.data)
+export function fetchFilters(options = {}) {
+  return api.get('/api/filters', { params: buildParams(options) }).then((r) => r.data)
+}
+
+export function fetchImportBatches() {
+  return api.get('/api/import-batches').then((r) => r.data)
 }
 
 export function uploadPdf(file) {
