@@ -22,6 +22,27 @@ OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 # Set WORKER_URL to offload PDF parsing to a remote machine, e.g. "http://192.168.1.100:8100"
 WORKER_URL = os.getenv("WORKER_URL", "")
 
+# Which local parser to use: "marker" (GPU, handles scanned PDFs via OCR) or
+# "plumber" (pure Python, text-layer only). Ignored when WORKER_URL is set.
+PARSER_BACKEND = os.getenv("PARSER_BACKEND", "marker").strip().lower()
+
+
+def get_parser(backend: str | None = None):
+    """Return a parser instance for the requested backend."""
+    backend = (backend or PARSER_BACKEND).strip().lower()
+
+    if backend == "plumber":
+        from app.plumber_parser import PlumberParser
+
+        return PlumberParser()
+
+    if backend != "marker":
+        logger.warning("Unknown PARSER_BACKEND %r, falling back to marker", backend)
+
+    from app.document_parser import DocumentParser
+
+    return DocumentParser()
+
 # CJK Radicals Supplement chars that NFKC doesn't normalize
 _CJK_RADICAL_FIXUP = str.maketrans({
     "\u2EA0": "\u6C11",  # ⺠ → 民
@@ -68,12 +89,13 @@ def _parse_pdf_remote(pdf_bytes: bytes, filename: str, out_dir: Path) -> tuple[s
 
 
 def _parse_pdf_local(pdf_path: str, out_dir: str) -> tuple[str, str]:
-    """Parse PDF locally using Marker (requires GPU / heavy compute)."""
-    from app.document_parser import DocumentParser
-
-    parser = DocumentParser()
-    text, md_path, _ = parser.parse_pdf(pdf_path, out_dir)
-    parser.cleanup()
+    """Parse PDF locally with the configured backend (see PARSER_BACKEND)."""
+    parser = get_parser()
+    logger.info("Parsing %s locally with %s", pdf_path, type(parser).__name__)
+    try:
+        text, md_path, _ = parser.parse_pdf(pdf_path, out_dir)
+    finally:
+        parser.cleanup()
     return text, md_path
 
 

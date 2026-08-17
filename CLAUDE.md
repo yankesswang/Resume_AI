@@ -27,7 +27,22 @@ Set `WORKER_URL` on the backend to delegate parsing to the worker (e.g. `http://
 | Variable | Default | Purpose |
 |---|---|---|
 | `WORKER_URL` | `""` (local parsing) | Remote PDF parse worker URL |
+| `PARSER_BACKEND` | `marker` | Local PDF parser: `marker` (GPU, OCR) or `plumber` (pure Python, text-layer only) |
 | `LM_STUDIO_URL` | `http://localhost:1234/v1/chat/completions` | LM Studio endpoint for LLM scoring |
+
+## PDF parser backends
+
+`PARSER_BACKEND` selects the local parser (ignored when `WORKER_URL` is set):
+
+- **`marker`** (default) — runs layout/OCR models on a GPU. Needed for scanned
+  or image-only PDFs.
+- **`plumber`** — reads the PDF text layer with pdfplumber. No GPU, no models.
+  Raises on scanned PDFs, which have no text layer to read.
+
+```bash
+PARSER_BACKEND=plumber uv run python -m uvicorn main:app --reload
+uv run python scripts/batch_import.py --pdf-dir data_v2 --parser-backend plumber
+```
 
 ## Project structure
 

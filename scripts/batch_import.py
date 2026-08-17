@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.database import DB_PATH, init_db, insert_candidate
 from app.regex_parser import parse_resume_markdown
 from app.document_parser import DocumentParser
+from app.parser_service import get_parser
 
 
 def _safe_name(name: str) -> str:
@@ -131,6 +132,12 @@ def main() -> int:
         help="Save split candidate markdown files under output/",
     )
     parser.add_argument("--dry-run", action="store_true", help="Parse only; do not write DB")
+    parser.add_argument(
+        "--parser-backend",
+        choices=["marker", "plumber"],
+        default=None,
+        help="PDF parser to use (default: $PARSER_BACKEND, else marker)",
+    )
     args = parser.parse_args()
 
     selected = [bool(args.pdf_path), bool(args.pdf_glob), bool(args.pdf_dir)]
@@ -151,7 +158,7 @@ def main() -> int:
     output_root = Path(args.output_root).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
 
-    parser_obj = DocumentParser()
+    parser_obj = get_parser(args.parser_backend)
     total_inserted = 0
     total_failed = 0
     try:

@@ -1,11 +1,13 @@
 """
 Remote PDF parsing worker service.
 
-Run this on a powerful machine with GPU to offload Marker PDF→Markdown conversion.
+Run this on a powerful machine with GPU to offload PDF→Markdown conversion.
 
 Usage:
     uv run python -m app.worker                                  # listens on 0.0.0.0:8100
     uv run python -m uvicorn app.worker:app --host 0.0.0.0 --port 8100
+
+Set PARSER_BACKEND=plumber to serve requests without a GPU (text-layer PDFs only).
 """
 
 import base64
@@ -16,7 +18,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 
-from app.document_parser import DocumentParser
+from app.parser_service import get_parser
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,13 +43,13 @@ async def parse_pdf(file: UploadFile = File(...)):
         pdf_path = Path(tmp_dir) / file.filename
         pdf_path.write_bytes(pdf_bytes)
 
-        parser = DocumentParser()
+        parser = get_parser()
         try:
             text, _, images = parser.parse_pdf(
                 str(pdf_path), tmp_dir, return_images=True, save_images=False,
             )
         except Exception as e:
-            logger.exception("Marker parsing failed")
+            logger.exception("%s parsing failed", type(parser).__name__)
             raise HTTPException(status_code=500, detail=f"Parsing failed: {e}")
         finally:
             parser.cleanup()
