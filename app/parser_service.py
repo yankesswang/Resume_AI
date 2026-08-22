@@ -1,6 +1,5 @@
 import base64
 import logging
-import os
 import unicodedata
 from pathlib import Path
 
@@ -10,21 +9,24 @@ from app.database import (
     delete_candidate_data,
     get_candidate_detail,
     insert_candidate,
+    refresh_upload_batch_counts,
+    register_upload_source,
     update_candidate_from_extract,
 )
 from app.regex_parser import parse_resume_markdown
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
+DATA_DIR = settings.data_dir
+OUTPUT_DIR = settings.output_dir
 
 # Set WORKER_URL to offload PDF parsing to a remote machine, e.g. "http://192.168.1.100:8100"
-WORKER_URL = os.getenv("WORKER_URL", "")
+WORKER_URL = settings.worker_url
 
 # Which local parser to use: "marker" (GPU, handles scanned PDFs via OCR) or
 # "plumber" (pure Python, text-layer only). Ignored when WORKER_URL is set.
-PARSER_BACKEND = os.getenv("PARSER_BACKEND", "marker").strip().lower()
+PARSER_BACKEND = settings.parser_backend
 
 
 def get_parser(backend: str | None = None):
@@ -121,14 +123,24 @@ def ingest_pdf(pdf_bytes: bytes, filename: str) -> int:
     # LLM extraction
     extract = parse_resume_markdown(text)
 
+    # Attribute the upload to today's upload batch so the Imports page can tell
+    # separate upload sessions apart instead of lumping them together.
+    batch_id, file_id = register_upload_source(str(pdf_path), md_path)
+
     # Insert into DB
     candidate_id = insert_candidate(
         extract,
         raw_markdown=text,
         source_pdf_path=str(pdf_path),
         source_md_path=md_path,
+        import_batch_id=batch_id,
+        import_file_id=file_id,
     )
-    logger.info("Ingested PDF %s → candidate %d", filename, candidate_id)
+    refresh_upload_batch_counts(batch_id)
+    logger.info(
+        "Ingested PDF %s → candidate %d (batch %d, file %d)",
+        filename, candidate_id, batch_id, file_id,
+    )
     return candidate_id
 
 
@@ -144,13 +156,17 @@ def ingest_existing_markdown(md_path: str) -> int:
     pdf_candidates = list(DATA_DIR.glob(f"{stem}.*"))
     source_pdf = str(pdf_candidates[0]) if pdf_candidates else ""
 
+    batch_id, file_id = register_upload_source(source_pdf or md_path, md_path)
     candidate_id = insert_candidate(
         extract,
         raw_markdown=text,
         source_pdf_path=source_pdf,
         source_md_path=md_path,
+        import_batch_id=batch_id,
+        import_file_id=file_id,
     )
-    logger.info("Ingested markdown %s → candidate %d", md_path, candidate_id)
+    refresh_upload_batch_counts(batch_id)
+    logger.info("Ingested markdown %s → candidate %d (batch %d)", md_path, candidate_id, batch_id)
     return candidate_id
 
 

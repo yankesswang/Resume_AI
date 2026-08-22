@@ -119,8 +119,10 @@ class EducationScoreDetail(BaseModel):
 
 
 class ExperienceTierDetail(BaseModel):
-    tier: int = 1                  # 1-4 (Wrapper → Ops)
-    tier_label: str = ""           # "Wrapper" / "RAG Architect" / "Model Tuner" / "Inference Ops"
+    tier: int = 0                  # 0-3 (Non-AI → AI Expert)
+    tier_label: str = ""           # "Non-AI" / "Wrapper" / "RAG Architect" / "AI Expert"
+    confidence: float = 1.0        # LLM self-reported confidence (0-1)
+    tier_source: str = "keyword"   # "llm" | "keyword" | "llm+keyword-floor"
     evidence: list[str] = Field(default_factory=list)
     tech_stack_score: float = 0.0  # S_stack
     complexity_score: float = 0.0  # S_complexity
@@ -162,6 +164,16 @@ class EnhancedMatchResult(BaseModel):
     engineering_detail: EngineeringMaturityDetail = Field(default_factory=EngineeringMaturityDetail)
     skill_detail: SkillVerification = Field(default_factory=SkillVerification)
 
+    # Capability-matrix breakdown when a domain profile is in use. The legacy
+    # engineering_detail keeps the first three axes so old consumers still work,
+    # but a non-engineering profile's axes are only truthful here.
+    competency_axes: list[dict] = Field(default_factory=list)
+
+    # Which scoring standard produced this result. Empty means the built-in
+    # AI-engineer path.
+    profile_id: str = ""
+    profile_name: str = ""
+
     # Funnel results
     passed_hard_filter: bool = True
     hard_filter_failures: list[str] = Field(default_factory=list)
@@ -173,3 +185,12 @@ class EnhancedMatchResult(BaseModel):
     strengths: list[str] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
     interview_suggestions: list[str] = Field(default_factory=list)
+
+    # --- Provenance ---
+    # Which path actually produced this score.  Without it a result written
+    # while LM Studio was down is indistinguishable from a good one, so nobody
+    # can tell afterwards which rows deserve a re-run.
+    scoring_mode: str = "full"                 # "full" | "degraded"
+    degraded_reasons: list[str] = Field(default_factory=list)
+    scoring_config_version: str = ""           # app.scoring.config.config_version()
+    tier_prompt_md5: str = ""                  # app.llm.TIER_CLASSIFY_PROMPT_MD5

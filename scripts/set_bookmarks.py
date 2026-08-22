@@ -6,7 +6,7 @@ Usage:
     uv run python scripts/set_bookmarks.py
 
 Then paste the printed command into your browser's DevTools console
-while the app is open at http://localhost:5173.
+while the app is open at http://localhost:3002.
 """
 
 import csv

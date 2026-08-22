@@ -22,18 +22,16 @@ sys.path.insert(0, str(ROOT))
 os.environ.setdefault("LM_STUDIO_URL", "http://192.168.0.84:1234/v1/chat/completions")
 os.environ.setdefault("EMBEDDING_URL", "http://192.168.0.84:1234/v1/embeddings")
 
-from app.database import _connect, init_db, ensure_job_requirement
-from app.models import EducationExtract, ExperienceTierDetail
+from app.database import _connect, init_db
+from app.models import EducationExtract
 from app.scoring.hard_filter import apply_hard_filters
 
 # ── v2 modules (current state of codebase) ──────────────────────────────────
 from app.scoring.education import score_education as score_education_v2
 from app.scoring.engineering import score_engineering_maturity as score_eng_v2
 from app.scoring.experience import (
-    TAG_WEIGHT_FACTOR,
     TIER_BASE_SCORES,
     TIER_KEYWORDS,
-    TIER_LABELS,
     DATA_SCALE_PATTERN,
     SYSTEM_ARCH_PATTERN,
     MODEL_SCALE_PATTERN,

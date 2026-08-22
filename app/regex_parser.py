@@ -113,6 +113,29 @@ def _split_sections(markdown: str) -> dict[str, str]:
     return sections
 
 
+# Marker names extracted images `_page_<page>_Picture_<index>.<ext>`, where
+# <index> is the image's order on that page. A 104 resume puts the headshot
+# first in the layout, so it lands in the `Picture_1` slot; later indices are
+# project screenshots, logos and portfolio images.
+_HEADSHOT_RE = re.compile(r"_page_\d+_Picture_1\.(?:jpeg|jpg|png)$", re.IGNORECASE)
+_IMAGE_REF_RE = re.compile(r"!\[.*?\]\(([^)]+)\)")
+
+
+def _extract_photo_path(markdown: str) -> str:
+    """Return the candidate's headshot image reference, or "" if absent.
+
+    Searched across the whole document rather than the 基本資料 section: OCR
+    splits resumes on arbitrary headings, so the headshot regularly ends up
+    under an unrelated one (自我介紹, 英文自傳, a project table...). Only the
+    `Picture_1` slot is accepted, so resumes whose sole image is a project
+    screenshot correctly yield no photo.
+    """
+    for ref in _IMAGE_REF_RE.findall(markdown):
+        if _HEADSHOT_RE.search(ref.strip()):
+            return ref.strip()
+    return ""
+
+
 def _kv_from_flat_text(section: str) -> dict[str, str]:
     """Fallback: extract key:value pairs from flat text where Marker didn't produce a table.
 
@@ -314,10 +337,9 @@ def _parse_basic_info(section: str, result: dict):
         s.strip() for s in re.split(r"\s{2,}|[,，、\n]", ideal_raw) if s.strip()
     ]
 
-    # Photo — look for image reference
-    photo_match = re.search(r"!\[.*?\]\(([^)]+)\)", section)
-    if photo_match:
-        result["photo_path"] = photo_match.group(1)
+    # Photo is resolved document-wide by _extract_photo_path(); the headshot
+    # often falls outside this section because OCR splits the resume on
+    # arbitrary headings.
 
     # LinkedIn — look for URL in surrounding text
     linkedin_match = re.search(
@@ -745,6 +767,8 @@ def parse_resume_markdown(markdown: str) -> ResumeExtract:
     elif "_preamble" in sections:
         _parse_basic_info(sections["_preamble"], result)
 
+    result["photo_path"] = _extract_photo_path(markdown)
+
     # Contact info — may be a normal section, embedded in heading, or inside basic section
     contact_section = sections.get("聯絡⽅式", sections.get("聯絡方式", ""))
     if not contact_section:
@@ -891,7 +915,7 @@ def parse_resume_markdown(markdown: str) -> ResumeExtract:
 
     # References and attachments — at the end of the document
     # Find the section whose TABLE rows contain 推薦人 / 附件 (not just mention in text)
-    for name, text in sections.items():
+    for _name, text in sections.items():
         table_rows = _parse_table_rows(text)
         row_labels = " ".join(cells[0].strip() for cells in table_rows if cells)
         if "推薦⼈" in row_labels or "推薦人" in row_labels or "附件" in row_labels:

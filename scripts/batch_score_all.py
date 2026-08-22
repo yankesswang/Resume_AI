@@ -342,7 +342,7 @@ def main():
 
     # Print top 20
     ranked = sorted(results.items(), key=lambda x: x[1].s_total, reverse=True)
-    print(f"\nTop 20 candidates:", flush=True)
+    print("\nTop 20 candidates:", flush=True)
     print(f"{'Rank':>4} {'ID':>4} {'Name':>10} {'S_Total':>8} {'S_AI':>6} {'M_Eng':>6} {'Tier':>5} {'Label':>15} {'Filter':>7}", flush=True)
     print("-" * 80, flush=True)
     for rank, (cid, r) in enumerate(ranked[:20], 1):
@@ -363,7 +363,7 @@ def main():
         else:
             tiers[r.experience_detail.tier] = tiers.get(r.experience_detail.tier, 0) + 1
 
-    print(f"\nTier distribution (passed hard filter):", flush=True)
+    print("\nTier distribution (passed hard filter):", flush=True)
     for t in [4, 3, 2, 1]:
         print(f"  Tier {t}: {tiers[t]}", flush=True)
     print(f"  Hard filter failed: {hf_fail}", flush=True)

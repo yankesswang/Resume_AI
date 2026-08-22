@@ -71,6 +71,8 @@ def verify_skills(
     # work history.  Also check raw_markdown (portfolio, self-introduction, thesis
     # descriptions) as a weaker evidence tier — reduces false positives for
     # candidates who describe technical work outside structured job entries.
+    from app.scoring.config import load
+    _sk = load()["skills"]
     suspicious = []
     penalty = 0.0
     high_value_skills = [
@@ -88,13 +90,13 @@ def verify_skills(
                 suspicious.append(
                     f"Claimed '{skill}' found in portfolio/self-intro but not in work history"
                 )
-                penalty += 2.0
+                penalty += float(_sk["penalty_portfolio_only"])
             else:
                 # No supporting evidence anywhere
                 suspicious.append(
                     f"Claimed '{skill}' but no evidence in work experience or portfolio"
                 )
-                penalty += 5.0
+                penalty += float(_sk["penalty_unsupported"])
 
     # Keyword stuffing detection: if total words in job_skills far outnumber
     # words in job_description, the candidate may be padding with buzzwords.
@@ -108,12 +110,12 @@ def verify_skills(
         suspicious.append(
             "Keyword stuffing: job_skills list is disproportionately long vs. descriptions"
         )
-        penalty += 5.0
+        penalty += float(_sk["penalty_keyword_stuffing"])
 
     # Base score from ecosystem alignment
-    eco_scores = {"LLM Stack": 90, "Deep Learning": 70, "Traditional ML": 50, "General": 30}
-    score = float(eco_scores.get(ecosystem, 30))
-    score = max(score - penalty, 10.0)
+    eco_scores = _sk["ecosystem_scores"]
+    score = float(eco_scores.get(ecosystem, eco_scores.get("General", 30)))
+    score = max(score - penalty, float(_sk["floor"]))
 
     return SkillVerification(
         skill_ecosystem=ecosystem,

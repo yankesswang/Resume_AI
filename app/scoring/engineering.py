@@ -122,10 +122,12 @@ def score_engineering_maturity(
     else:
         frontend_level = 0
 
-    b = BACKEND_SCORES[backend_level]
-    d = DB_SCORES[database_level]
-    f = FE_SCORES[frontend_level]
-    m_eng = min(b + d + f, 0.7)  # cap raised from 0.5 to 0.7
+    from app.scoring.config import load
+    _eng = load()["engineering"]
+    b = float(_eng["backend"][str(backend_level)])
+    d = float(_eng["database"][str(database_level)])
+    f = float(_eng["frontend"][str(frontend_level)])
+    m_eng = min(b + d + f, float(_eng["cap"]))
 
     return EngineeringMaturityDetail(
         backend_level=backend_level,

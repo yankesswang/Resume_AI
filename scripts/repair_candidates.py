@@ -11,7 +11,6 @@ Usage:
 
 import argparse
 import json
-import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -211,7 +210,7 @@ def main():
         conn.close()
         stats["still_empty_name"] = len(still_broken)
 
-    print(f"\n--- Summary ---")
+    print("\n--- Summary ---")
     print(f"Repaired:         {stats['repaired']}")
     print(f"Skipped (no fix): {stats['skip']}")
     print(f"Errors:           {stats['error']}")

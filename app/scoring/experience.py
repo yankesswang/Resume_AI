@@ -55,17 +55,59 @@ TIER_KEYWORDS: dict[int, dict[str, float]] = {
 }
 
 TIER_LABELS = {
+    0: "Non-AI",
     1: "Wrapper",
     2: "RAG Architect",
     3: "AI Expert",
 }
 
-TIER_BASE_SCORES = {1: 60, 2: 80, 3: 100}
+# Tier 0 exists so candidates with no AI evidence at all stop sharing a floor
+# with genuine API-level practitioners.  Without it every non-AI applicant
+# scored 60+, which compressed the whole ranking.
+#
+# Bases leave room for the bonus band WITHOUT crossing into the next tier.
+# Previously base+bonus spanned exactly the tier gap (e.g. tier 2 reached 100),
+# so a strong Tier-2 candidate outranked a Tier-3 one and the tiers stopped
+# meaning anything.  Each tier now owns a distinct band:
+#   tier 0: 25-40 | tier 1: 45-62 | tier 2: 67-84 | tier 3: 88-100
+TIER_BASE_SCORES = {0: 25, 1: 45, 2: 67, 3: 88}
+
+# Max bonus points addable on top of a tier base (stack + complexity + metric).
+TIER_BONUS_CAP = {0: 15, 1: 17, 2: 17, 3: 12}
+
+
+def _tier_bases() -> dict[int, float]:
+    """Live tier bases from the tunable config (falls back to the constants)."""
+    from app.scoring.config import tier_base_scores
+    try:
+        return tier_base_scores()
+    except Exception:
+        return TIER_BASE_SCORES
+
+
+def _tier_caps() -> dict[int, float]:
+    from app.scoring.config import tier_bonus_caps
+    try:
+        return tier_bonus_caps()
+    except Exception:
+        return TIER_BONUS_CAP
+
+
+def _bonus_cfg() -> dict:
+    from app.scoring.config import load
+    return load()["bonuses"]
 
 # Skill tags listed in the CV header get only 40% weight vs. the same keyword
 # appearing inside a job description or raw narrative text.  This prevents
 # candidates from inflating their stack_bonus by stuffing keywords in the
 # skill-tag section without demonstrating them in actual work history.
+def _tag_weight_factor() -> float:
+    from app.scoring.config import load
+    return load()["tag_weight_factor"]
+
+
+# Kept as a module constant for callers/tests that import it directly; the
+# scoring paths read the live value via _tag_weight_factor().
 TAG_WEIGHT_FACTOR = 0.4
 
 # Complexity indicators
@@ -97,6 +139,58 @@ VALID_METRIC_PATTERN = re.compile(
     r"VRAM|GPU\s*memory|顯存.*?\d+|記憶體.*?\d+)",
     re.IGNORECASE,
 )
+
+
+# High-specificity signals used only by the LLM keyword floor.  Deliberately
+# narrower than TIER_KEYWORDS: these are terms that are hard to mention without
+# hands-on work.  Generic entries (PyTorch, Training, Llama, API) are excluded
+# because they match coursework and skill lists — see _strong_signal_floor.
+_STRONG_TIER3_SIGNALS = [
+    re.compile(p, re.IGNORECASE) for p in (
+        r"vLLM", r"TensorRT[- ]?LLM", r"\bTensorRT\b", r"QLoRA", r"\bLoRA\b",
+        r"RLHF", r"\bDPO\b", r"\bPEFT\b", r"DeepSpeed", r"Megatron",
+        r"Flash[- ]?Attention", r"KV[- ]?Cache", r"Speculative Decoding",
+        r"\bNCCL\b", r"\bCUDA\b", r"Fine[- ]?tun", r"\bSFT\b",
+        r"Tensor Parallel", r"Model Parallel",
+    )
+]
+_STRONG_TIER2_SIGNALS = [
+    re.compile(p, re.IGNORECASE) for p in (
+        r"\bRAG\b", r"Retrieval[- ]?Augmented", r"Milvus", r"Qdrant",
+        r"Pinecone", r"Weaviate", r"LangGraph", r"LlamaIndex", r"GraphRAG",
+        r"HyDE", r"Rerank", r"Hybrid Search", r"向量資料庫",
+    )
+]
+
+# Minimum number of DISTINCT strong signals required to raise a tier.
+_FLOOR_MIN_SIGNALS = 2
+
+
+def _strong_signal_floor(evidence_text: str, tag_text: str) -> int:
+    """Lowest tier justified by unambiguous keyword evidence.
+
+    Evidence text (job descriptions, resume narrative) counts fully; skill tags
+    alone are not enough to raise a tier, since tag stuffing is the main
+    inflation vector this pipeline guards against.
+    """
+    if not evidence_text.strip():
+        return 0
+
+    from app.scoring.config import load
+    kf = load()["keyword_floor"]
+    if not kf.get("enabled", True):
+        return 0
+    min_signals = int(kf.get("min_signals", _FLOOR_MIN_SIGNALS))
+
+    t3 = sum(1 for p in _STRONG_TIER3_SIGNALS if p.search(evidence_text))
+    if t3 >= min_signals:
+        return 3
+
+    t2 = sum(1 for p in _STRONG_TIER2_SIGNALS if p.search(evidence_text))
+    if t2 >= min_signals:
+        return 2
+
+    return 0
 
 
 def _find_keywords(text: str, keyword_map: dict[str, float]) -> list[tuple[str, float]]:
@@ -137,7 +231,7 @@ def classify_experience_tier(
 
     if not combined_text.strip():
         return ExperienceTierDetail(
-            tier=1, tier_label="Wrapper", score=60.0,
+            tier=0, tier_label=TIER_LABELS[0], score=float(_tier_bases()[0]),
         )
 
     # --- Tier threshold determination (uses full combined_text, unweighted) ---
@@ -154,8 +248,11 @@ def classify_experience_tier(
         best_tier = 2
     elif tier_threshold_weight[2] > 0:
         best_tier = 2
-    else:
+    elif tier_threshold_weight[1] > 0:
         best_tier = 1
+    else:
+        # No AI keyword anywhere — a general software / non-technical resume.
+        best_tier = 0
 
     # --- Position-weighted stack score (feeds stack_bonus only) ---
     # Keywords in evidence_text → full weight; tag-only → TAG_WEIGHT_FACTOR weight
@@ -172,7 +269,7 @@ def classify_experience_tier(
                 all_evidence.append(f"[Tier {tier}] {kw}")
             else:
                 # Tag-only: reduced weight to prevent gaming
-                total_stack_score += weight * TAG_WEIGHT_FACTOR
+                total_stack_score += weight * _tag_weight_factor()
                 all_evidence.append(f"[Tier {tier}] {kw} (tag)")
 
     # Complexity score (0-1)
@@ -188,12 +285,18 @@ def classify_experience_tier(
     metric_matches = VALID_METRIC_PATTERN.findall(combined_text)
     metric_score = min(len(metric_matches) * 0.25, 1.0)
 
-    # Calculate final score
-    base_score = TIER_BASE_SCORES[best_tier]
-    stack_bonus = min(total_stack_score * 2, 10.0)  # up to +10
-    complexity_bonus = complexity * 5               # up to +5
-    metric_bonus = metric_score * 5                 # up to +5
-    final_score = min(base_score + stack_bonus + complexity_bonus + metric_bonus, 100.0)
+    # Calculate final score. The bonus total is capped per tier so a strong
+    # candidate never leaks into the band above their tier.
+    bc = _bonus_cfg()
+    base_score = _tier_bases()[best_tier]
+    stack_bonus = min(total_stack_score * bc["stack_multiplier"], bc["stack_max"])
+    complexity_bonus = complexity * bc["complexity_max"]
+    metric_bonus = metric_score * bc["metric_max"]
+    bonus = min(
+        stack_bonus + complexity_bonus + metric_bonus,
+        _tier_caps()[best_tier],
+    )
+    final_score = min(base_score + bonus, 100.0)
 
     return ExperienceTierDetail(
         tier=best_tier,
@@ -227,6 +330,7 @@ def classify_experience_tier_llm(
         return classify_experience_tier(work_experiences, skill_tags, raw_markdown)
 
     llm_tier: int | None = None
+    confidence: float = 1.0
 
     # 1. Check DB cache
     try:
@@ -240,7 +344,11 @@ def classify_experience_tier_llm(
     if llm_tier is None:
         try:
             result = classify_ai_tier(work_experiences, skill_tags, raw_markdown)
-            llm_tier = max(1, min(int(result.get("tier", 1)), 3))
+            llm_tier = max(0, min(int(result.get("tier", 0)), 3))
+            try:
+                confidence = float(result.get("confidence", 1.0))
+            except (TypeError, ValueError):
+                confidence = 1.0
             store_llm_tier_cache(db_conn, candidate_id, raw_markdown, {
                 "tier": llm_tier,
                 "reasoning": result.get("reasoning", ""),
@@ -275,7 +383,7 @@ def classify_experience_tier_llm(
                 total_stack_score += weight
                 all_evidence.append(f"[Tier {tier}] {kw}")
             else:
-                total_stack_score += weight * TAG_WEIGHT_FACTOR
+                total_stack_score += weight * _tag_weight_factor()
                 all_evidence.append(f"[Tier {tier}] {kw} (tag)")
 
     complexity = 0.0
@@ -288,18 +396,35 @@ def classify_experience_tier_llm(
 
     metric_score = min(len(VALID_METRIC_PATTERN.findall(combined_text)) * 0.25, 1.0)
 
-    # 4. Final score: LLM tier base + keyword bonuses
-    base = TIER_BASE_SCORES[llm_tier]
-    final_score = min(
-        base
-        + min(total_stack_score * 2, 10.0)
-        + complexity * 5
-        + metric_score * 5,
-        100.0,
+    # 3b. Keyword floor: the LLM occasionally misses strong signals in long or
+    #     badly-formatted resumes.  The floor only ever raises a tier, never
+    #     lowers it, so the LLM stays authoritative for inflation control.
+    #
+    #     Calibrated on the full 3179-resume corpus: a SINGLE tier-3 keyword is
+    #     far too permissive (71% of resumes mention PyTorch/Training, 20% match
+    #     one strong term — usually in a course or skill list).  Requiring two
+    #     DISTINCT high-specificity signals lands at ~7.7%, which matches the
+    #     realistic share of model-level engineers in this pool.
+    keyword_floor = _strong_signal_floor(evidence_text, tag_text)
+
+    effective_tier = max(llm_tier, keyword_floor)
+    tier_source = "llm" if effective_tier == llm_tier else "llm+keyword-floor"
+
+    # 4. Final score: tier base + keyword bonuses, capped inside the tier band.
+    bc = _bonus_cfg()
+    base = _tier_bases()[effective_tier]
+    bonus = min(
+        min(total_stack_score * bc["stack_multiplier"], bc["stack_max"])
+        + complexity * bc["complexity_max"]
+        + metric_score * bc["metric_max"],
+        _tier_caps()[effective_tier],
     )
+    final_score = min(base + bonus, 100.0)
     return ExperienceTierDetail(
-        tier=llm_tier,
-        tier_label=TIER_LABELS[llm_tier],
+        tier=effective_tier,
+        tier_label=TIER_LABELS[effective_tier],
+        confidence=round(confidence, 2),
+        tier_source=tier_source,
         evidence=all_evidence[:15],
         tech_stack_score=round(total_stack_score, 2),
         complexity_score=round(complexity, 2),

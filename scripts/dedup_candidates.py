@@ -136,7 +136,7 @@ def main():
         )
     """).fetchone()["c"]
 
-    print(f"\nDone!")
+    print("\nDone!")
     print(f"  Before: {total_before}")
     print(f"  Deleted: {total_before - total_after}")
     print(f"  After: {total_after}")

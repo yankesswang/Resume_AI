@@ -45,36 +45,63 @@ def check(name: str, condition: bool, detail: str = ""):
 # ---------------------------------------------------------------------------
 # 1. Education Scoring
 # ---------------------------------------------------------------------------
+def _best(detail):
+    """The highest-education slot of an EducationScoreDetail.
+
+    v2 restructured the flat detail into nested bachelor/master slots
+    (EducationLevelDetail), so school_tier / major_relevance now live one level
+    down. master wins when present because that is the higher qualification.
+    """
+    return detail.master or detail.bachelor
+
+
 def test_education():
     print("\n=== Education Scoring ===")
 
     # Top school + top major + masters
     edu = [EducationExtract(school="台灣大學", department="資訊工程", degree_level="碩士")]
     r = score_education(edu)
-    check("NTU CS Masters -> tier A", r.school_tier == "A")
-    check("NTU CS Masters -> degree Masters", r.degree_level == "Masters")
-    check("NTU CS Masters -> major Tier1", r.major_relevance == "Tier1")
-    check("NTU CS Masters -> score >= 80", r.score >= 80, f"got {r.score}")
+    check("NTU CS Masters -> tier A", _best(r).school_tier == "A")
+    check("NTU CS Masters -> master slot filled", r.master is not None)
+    check("NTU CS Masters -> major Tier1", _best(r).major_relevance == "Tier1")
+    # Master-only: hybrid = 0*0.7 + 20*0.3 = 6 -> 6/24*100 = 25.
+    # A master's with no bachelor row on record is deliberately not a top score;
+    # the bachelor slot carries 70% of the hybrid weight.
+    check("NTU CS Masters -> score == 25", r.score == 25.0, f"got {r.score}")
 
-    # US top school
+    # A full bachelor+master pair at the same tier is what actually scores high.
+    edu_pair = [
+        EducationExtract(school="台灣大學", department="資訊工程", degree_level="學士"),
+        EducationExtract(school="台灣大學", department="資訊工程", degree_level="碩士"),
+    ]
+    r_pair = score_education(edu_pair)
+    check("NTU CS Bachelor+Master -> score >= 80", r_pair.score >= 80, f"got {r_pair.score}")
+
+    # US top school. PhD maps to the S tier (15 pts vs Tier A's 10), which is a
+    # v2 addition that surfaces the PhD premium.
     edu2 = [EducationExtract(school="Stanford University", department="Computer Science", degree_level="PhD")]
     r2 = score_education(edu2)
-    check("Stanford CS PhD -> tier A", r2.school_tier == "A")
-    check("Stanford CS PhD -> degree PhD", r2.degree_level == "PhD")
-    check("Stanford CS PhD -> score >= 90", r2.score >= 90, f"got {r2.score}")
+    check("Stanford CS PhD -> tier S", _best(r2).school_tier == "S")
+    check("Stanford CS PhD -> score > NTU masters", r2.score > r.score, f"got {r2.score}")
 
     # Mid-tier school + non-CS major
     edu3 = [EducationExtract(school="中央大學", department="企業管理", degree_level="學士")]
     r3 = score_education(edu3)
-    check("NCU Business Bachelors -> tier B", r3.school_tier == "B")
-    check("NCU Business Bachelors -> major Other", r3.major_relevance == "Other")
+    check("NCU Business Bachelors -> tier B", _best(r3).school_tier == "B")
+    check("NCU Business Bachelors -> major Other", _best(r3).major_relevance == "Other")
     check("NCU Business Bachelors -> score < 50", r3.score < 50, f"got {r3.score}")
 
-    # Unknown school
+    # Unknown school -> tier D (the unranked bucket). C is now a real tier for
+    # established national/well-regarded private universities.
     edu4 = [EducationExtract(school="某私立大學", department="外文系", degree_level="學士")]
     r4 = score_education(edu4)
-    check("Unknown school -> tier C", r4.school_tier == "C")
+    check("Unknown school -> tier D", _best(r4).school_tier == "D")
     check("Unknown school -> score < 30", r4.score < 30, f"got {r4.score}")
+
+    # A tier-C school must outrank an unranked one.
+    r4c = score_education([EducationExtract(school="淡江大學", department="資訊工程", degree_level="學士")])
+    check("Tier C school -> tier C", _best(r4c).school_tier == "C")
+    check("Tier C outranks unranked", r4c.score > r4.score, f"C={r4c.score} D={r4.score}")
 
     # Empty education
     r5 = score_education([])
@@ -86,12 +113,17 @@ def test_education():
         EducationExtract(school="Stanford", department="CS", degree_level="Masters"),
     ]
     r6 = score_education(edu6)
-    check("Multiple edu -> picks best (Stanford)", r6.school_tier == "A")
+    check("Multiple edu -> picks best (Stanford)", _best(r6).school_tier == "A")
 
     # Math/Stats major -> Tier2
     edu7 = [EducationExtract(school="台灣大學", department="數學系", degree_level="碩士")]
     r7 = score_education(edu7)
-    check("NTU Math Masters -> major Tier2", r7.major_relevance == "Tier2")
+    check("NTU Math Masters -> major Tier2", _best(r7).major_relevance == "Tier2")
+
+    # Thesis bonus is decoupled from the base cap.
+    r8 = score_education(edu_pair, raw_markdown="Thesis on Transformer architectures, accepted at NeurIPS")
+    check("Thesis bonus applied", r8.score > r_pair.score, f"{r8.score} vs {r_pair.score}")
+    check("Thesis bonus <= 5", r8.thesis_bonus <= 5.0, f"got {r8.thesis_bonus}")
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +335,7 @@ def test_pipeline():
     check("Tags not empty", len(result.tags) > 0, f"got {result.tags}")
     check("Analysis text not empty", len(result.analysis_text) > 0)
     check("Strengths not empty", len(result.strengths) > 0)
-    check("Has education detail", result.education_detail.school_tier == "A")
+    check("Has education detail", _best(result.education_detail).school_tier == "A")
     check("Has engineering detail", result.engineering_detail.backend_level > 0)
 
 

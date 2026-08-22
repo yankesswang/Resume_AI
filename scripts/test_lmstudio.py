@@ -23,7 +23,7 @@ def test_models():
 
 def test_chat(prompt: str = "Say hello in one sentence."):
     """Send a simple chat completion request."""
-    print(f"\n=== Chat completion test ===")
+    print("\n=== Chat completion test ===")
     print(f"Prompt: {prompt}")
 
     payload = {

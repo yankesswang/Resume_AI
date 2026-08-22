@@ -17,20 +17,28 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-# Point LLM + embedding endpoints to the remote LM Studio
-os.environ["LM_STUDIO_URL"] = "http://192.168.0.84:1234/v1/chat/completions"
-os.environ["EMBEDDING_URL"] = "http://192.168.0.84:1234/v1/embeddings"
-# Use a bigger context for real resumes
-os.environ.setdefault("MODEL_CONTEXT_LENGTH", "8192")
-os.environ.setdefault("RESPONSE_TOKENS", "4096")
+# Point LLM + embedding endpoints to the remote LM Studio.
+# Only when run as a script: under pytest this module is imported at collection
+# time, and unconditionally rewriting the endpoints there would repoint the
+# whole session's config at a GPU box that CI cannot reach.
+LM_STUDIO_HOST = os.environ.get("E2E_LM_STUDIO_HOST", "http://192.168.0.84:1234")
+
+if __name__ == "__main__":
+    os.environ["LM_STUDIO_URL"] = f"{LM_STUDIO_HOST}/v1/chat/completions"
+    os.environ["EMBEDDING_URL"] = f"{LM_STUDIO_HOST}/v1/embeddings"
+    # Use a bigger context for real resumes
+    os.environ.setdefault("MODEL_CONTEXT_LENGTH", "8192")
+    os.environ.setdefault("RESPONSE_TOKENS", "4096")
 
 import httpx
+import pytest
+
 from app.database import get_candidate_detail, get_match_result, init_db, upsert_match_result
 from app.models import EnhancedMatchResult
 from app.scoring.pipeline import run_full_scoring
 
 JOB_REQ_PATH = ROOT / "job_requirement.json"
-LM_STUDIO_BASE = "http://192.168.0.84:1234"
+LM_STUDIO_BASE = LM_STUDIO_HOST
 
 # Candidate IDs to test (diverse profiles)
 TEST_CANDIDATES = [1, 4, 20, 30]
@@ -67,7 +75,7 @@ def verify_lm_studio():
         return False
 
 
-def test_candidate_scoring(candidate_id: int, job_data: dict):
+def run_candidate_scoring(candidate_id: int, job_data: dict):
     """Run full scoring pipeline on a real candidate."""
     detail = get_candidate_detail(candidate_id)
     if not detail:
@@ -92,8 +100,11 @@ def test_candidate_scoring(candidate_id: int, job_data: dict):
     print(f"\n    Scoring completed in {elapsed:.1f}s")
     print(f"    Overall: {result.overall_score}")
     print(f"    S_AI: {result.s_ai}  |  M_Eng: {result.m_eng}  |  S_Total: {result.s_total}")
-    print(f"    Education: {result.education_score} (tier={result.education_detail.school_tier}, "
-          f"degree={result.education_detail.degree_level}, major={result.education_detail.major_relevance})")
+    # v2 nests the tier/major under bachelor/master slots rather than flat fields.
+    _edu_slot = result.education_detail.master or result.education_detail.bachelor
+    print(f"    Education: {result.education_score} (tier={_edu_slot.school_tier if _edu_slot else '-'}, "
+          f"major={_edu_slot.major_relevance if _edu_slot else '-'}, "
+          f"thesis_bonus={result.education_detail.thesis_bonus})")
     print(f"    Experience: tier={result.experience_detail.tier} ({result.experience_detail.tier_label}), "
           f"score={result.experience_detail.score}")
     print(f"    Engineering: backend_L{result.engineering_detail.backend_level} "
@@ -109,15 +120,15 @@ def test_candidate_scoring(candidate_id: int, job_data: dict):
     print(f"    Tags: {result.tags}")
 
     if result.strengths:
-        print(f"    Strengths:")
+        print("    Strengths:")
         for s in result.strengths[:3]:
             print(f"      + {s}")
     if result.gaps:
-        print(f"    Gaps:")
+        print("    Gaps:")
         for g in result.gaps[:3]:
             print(f"      - {g}")
     if result.interview_suggestions:
-        print(f"    Interview suggestions:")
+        print("    Interview suggestions:")
         for s in result.interview_suggestions[:3]:
             print(f"      ? {s}")
 
@@ -140,7 +151,7 @@ def test_candidate_scoring(candidate_id: int, job_data: dict):
     return result
 
 
-def test_db_persistence(candidate_id: int, result: EnhancedMatchResult, job_id: int):
+def run_db_persistence(candidate_id: int, result: EnhancedMatchResult, job_id: int):
     """Test that the enhanced result can be saved and loaded from the DB."""
     prefix = f"[DB ID={candidate_id}]"
 
@@ -169,6 +180,7 @@ def test_db_persistence(candidate_id: int, result: EnhancedMatchResult, job_id: 
               isinstance(loaded.get("passed_hard_filter"), bool))
 
 
+@pytest.mark.integration
 def test_embedding_similarity():
     """Test embedding-based semantic similarity with real LM Studio."""
     print("\n=== Embedding Similarity Test ===")
@@ -201,6 +213,7 @@ def test_embedding_similarity():
         check("Embedding service works", False, str(e))
 
 
+@pytest.mark.integration
 def test_llm_tier_classification():
     """Test LLM-based tier classification with real LM Studio."""
     print("\n=== LLM Tier Classification Test ===")
@@ -248,7 +261,7 @@ def test_llm_tier_classification():
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    print(f"Resume AI - End-to-End Scoring Test")
+    print("Resume AI - End-to-End Scoring Test")
     print(f"LM Studio: {LM_STUDIO_BASE}")
     print(f"DB: {ROOT / 'resume_ai.db'}")
     print()
@@ -280,7 +293,7 @@ if __name__ == "__main__":
     results = {}
     for cid in TEST_CANDIDATES:
         try:
-            r = test_candidate_scoring(cid, job_data)
+            r = run_candidate_scoring(cid, job_data)
             if r:
                 results[cid] = r
         except Exception as e:
@@ -292,7 +305,7 @@ if __name__ == "__main__":
     print("\n=== Database Persistence ===")
     for cid, r in results.items():
         try:
-            test_db_persistence(cid, r, job_id)
+            run_db_persistence(cid, r, job_id)
         except Exception as e:
             FAIL += 1
             print(f"  CRASH DB test candidate {cid}: {e}")

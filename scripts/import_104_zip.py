@@ -143,6 +143,8 @@ def main() -> int:
         str(zip_path),
         "--output-root",
         str(output_root),
+        "--extract-dir",
+        str(extract_dir),
         "--notes",
         "Organized by scripts/import_104_zip.py",
     ]

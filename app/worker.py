@@ -50,7 +50,7 @@ async def parse_pdf(file: UploadFile = File(...)):
             )
         except Exception as e:
             logger.exception("%s parsing failed", type(parser).__name__)
-            raise HTTPException(status_code=500, detail=f"Parsing failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Parsing failed: {e}") from e
         finally:
             parser.cleanup()
 

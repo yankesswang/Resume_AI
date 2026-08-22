@@ -255,6 +255,7 @@ def populate_import_files(
     conn: sqlite3.Connection,
     batch_id: int,
     output_root: Path | None,
+    scope_paths: set[str] | None,
 ) -> dict[str, int]:
     rows = conn.execute(
         """
@@ -265,6 +266,8 @@ def populate_import_files(
          ORDER BY source_pdf_path
         """
     ).fetchall()
+    if scope_paths is not None:
+        rows = [r for r in rows if str(r["source_pdf_path"]) in scope_paths]
 
     result: dict[str, int] = {}
     for row in rows:
@@ -300,13 +303,52 @@ def populate_import_files(
     return result
 
 
+def resolve_batch_scope(
+    conn: sqlite3.Connection,
+    extract_dir: Path | None,
+    output_root: Path | None,
+) -> set[str] | None:
+    """Return the source_pdf_path values that belong to the batch being organized.
+
+    Restricting the scope is what keeps a re-organize from relabelling every
+    previously imported candidate into the newest batch. A candidate is in scope
+    when its PDF sits under the batch's extract dir, or its parsed markdown sits
+    under the batch's output root. Returns None when no scope can be determined,
+    which reproduces the legacy whole-table behaviour.
+    """
+    prefixes: list[tuple[str, str]] = []
+    if extract_dir:
+        prefixes.append(("source_pdf_path", f"{str(extract_dir).rstrip('/')}/%"))
+    if output_root:
+        prefixes.append(("source_md_path", f"{str(output_root).rstrip('/')}/%"))
+    if not prefixes:
+        return None
+
+    scope: set[str] = set()
+    for column, pattern in prefixes:
+        for row in conn.execute(
+            f"""
+            SELECT DISTINCT source_pdf_path
+              FROM candidates
+             WHERE {column} LIKE ?
+               AND source_pdf_path IS NOT NULL AND trim(source_pdf_path) != ''
+            """,
+            (pattern,),
+        ):
+            scope.add(str(row["source_pdf_path"]))
+    return scope
+
+
 def update_candidate_source_metadata(
     conn: sqlite3.Connection,
     batch_id: int,
     file_ids: dict[str, int],
     parser_version: str,
+    scope_paths: set[str] | None,
 ) -> None:
     rows = conn.execute("SELECT id, source_pdf_path, raw_markdown FROM candidates").fetchall()
+    if scope_paths is not None:
+        rows = [r for r in rows if str(r["source_pdf_path"] or "") in scope_paths]
     for row in rows:
         conn.execute(
             """
@@ -401,6 +443,13 @@ def recompute_dedupe(
             for candidate_id in ids:
                 internal_dup_by_id.setdefault(candidate_id, set()).add(f"{key_type}:{key}")
 
+    # Dedupe compares against every current candidate (cross-batch matches
+    # matter), but the batch stamp must reflect each candidate's own batch.
+    candidate_batches = {
+        int(r["id"]): r["import_batch_id"]
+        for r in conn.execute("SELECT id, import_batch_id FROM candidates")
+    }
+
     generated_at = _now()
     for row in current_rows:
         candidate_id = int(row["id"])
@@ -482,7 +531,7 @@ def recompute_dedupe(
             """,
             (
                 candidate_id,
-                batch_id,
+                candidate_batches.get(candidate_id) or batch_id,
                 is_unique,
                 dedupe_status,
                 confidence,
@@ -597,6 +646,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-name", required=True, help="Human-readable import batch name")
     parser.add_argument("--zip-path", help="Source 104 ZIP path")
     parser.add_argument("--output-root", help="Output root for parsed markdown/images")
+    parser.add_argument("--extract-dir", help="ZIP extraction dir used to scope this batch")
+    parser.add_argument(
+        "--reassign-all",
+        action="store_true",
+        help="Legacy behaviour: reassign every candidate in the DB to this batch",
+    )
     parser.add_argument("--parser-version", default="marker-regex-20260526")
     parser.add_argument("--notes", default="")
     parser.add_argument("--old-db", action="append", dest="old_dbs", help="Old DB to compare against; can repeat")
@@ -616,6 +671,7 @@ def main() -> int:
     old_dbs = [p if p.is_absolute() else (root / p).resolve() for p in old_dbs]
     zip_path = Path(args.zip_path).expanduser().resolve() if args.zip_path else None
     output_root = Path(args.output_root).expanduser().resolve() if args.output_root else None
+    extract_dir = Path(args.extract_dir).expanduser().resolve() if args.extract_dir else None
 
     if not args.no_backup:
         backup_path = backup_db(db_path, Path(args.backup_dir).expanduser().resolve())
@@ -625,8 +681,17 @@ def main() -> int:
     try:
         ensure_schema(conn)
         batch_id = upsert_batch(conn, args.batch_name, zip_path, args.notes)
-        file_ids = populate_import_files(conn, batch_id, output_root)
-        update_candidate_source_metadata(conn, batch_id, file_ids, args.parser_version)
+        scope_paths = (
+            None if args.reassign_all else resolve_batch_scope(conn, extract_dir, output_root)
+        )
+        if scope_paths is None:
+            print("scope: whole table (no extract-dir/output-root scope available)")
+        else:
+            print(f"scope: {len(scope_paths)} PDF(s) belonging to this batch")
+        file_ids = populate_import_files(conn, batch_id, output_root, scope_paths)
+        update_candidate_source_metadata(
+            conn, batch_id, file_ids, args.parser_version, scope_paths
+        )
         recompute_dedupe(conn, batch_id, old_dbs)
         create_views(conn)
         update_batch_counts(conn, batch_id)
