@@ -1,0 +1,21 @@
+{"profile_id":"job:sales","name":"通路業務經理","domain":"業務開發",
+ "summary":"負責經銷通路開發與客戶經營","source":"manual",
+ "tiers":[
+  {"level":0,"label":"無業務經驗","definition":"沒有任何銷售、客戶開發或業績承擔紀錄。"},
+  {"level":1,"label":"業務執行","definition":"依既定名單電訪跑客戶，未承擔獨立業績目標。"},
+  {"level":2,"label":"獨立業務","definition":"獨立負責區域通路，承擔年度業績目標。"},
+  {"level":3,"label":"業務主管","definition":"帶領業務團隊、制定通路策略、經營 KA。"}],
+ "tier_keywords":{
+  "1":{"電話開發":1.0,"門市":0.8,"銷售":0.8,"報價":1.0,"telesales":1.0,"retail":0.8,"客服":0.5,"接單":0.8},
+  "2":{"業績目標":1.8,"議價":1.5,"簽約":1.5,"通路開發":1.8,"客戶經營":1.5,"經銷商":1.5,"quota":1.5,"B2B":1.2},
+  "3":{"KA":2.0,"關鍵客戶":2.0,"通路策略":2.2,"帶領業務團隊":2.5,"業務主管":2.0,"key account":2.0,"channel strategy":2.2,"sales director":2.5}},
+ "competencies":[
+  {"key":"channel","label":"通路開發","weight":0.4,"levels":{"1":["拜訪","開發客戶"],"2":["經銷商","通路","代理商"],"3":["通路策略","KA","關鍵客戶"]}},
+  {"key":"crm","label":"客戶經營","weight":0.35,"levels":{"1":["客戶服務","接單"],"2":["客戶維繫","回購","CRM"],"3":["大客戶經營","長期合約"]}},
+  {"key":"nego","label":"議價談判","weight":0.25,"levels":{"1":["報價"],"2":["議價","合約"],"3":["年度合約談判","毛利管理"]}}],
+ "education":{"matters":false,"tier1_majors":["企管","行銷","國貿"],"tier2_majors":["商學","經濟"]},
+ "ecosystems":[{"name":"B2B 通路","score":90,"keywords":["經銷商","代理商","通路","B2B"]},
+               {"name":"B2C 零售","score":60,"keywords":["門市","零售","電商"]},
+               {"name":"一般","score":30,"keywords":[]}],
+ "hard_filters":{"must_have_groups":[{"name":"業務相關經驗","skills":["業務","銷售","客戶","sales"],"min_matches":1}]},
+ "weights":{"experience":0.45,"engineering":0.25,"semantic":0.20,"education":0.05,"skills":0.05}}
