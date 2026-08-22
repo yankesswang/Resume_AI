@@ -4,6 +4,107 @@ const api = axios.create({
   baseURL: '',
 })
 
+const TOKEN_KEY = 'resume_ai_token'
+
+// Read from storage per request rather than captured once at module load: the
+// token changes on login, logout and password change, and a captured copy
+// would keep sending the old one until a reload.
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem(TOKEN_KEY)
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
+
+// A 401 means the session is gone — expired, revoked, or the account was
+// suspended by root mid-session. Clear it and send the user to the login
+// screen, rather than leaving the app half-working with a dead credential.
+//
+// 403 is deliberately NOT handled here: it means "logged in, not allowed",
+// and redirecting to login would suggest re-authenticating fixes it. Views
+// surface that message where the action was attempted.
+let onUnauthorized = null
+export function setUnauthorizedHandler(fn) {
+  onUnauthorized = fn
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status
+    const url = error?.config?.url || ''
+    // The login endpoint's own 401 is "wrong password", not an expired
+    // session, and must reach the form instead of triggering a redirect.
+    if (status === 401 && !url.includes('/api/auth/login')) {
+      localStorage.removeItem(TOKEN_KEY)
+      if (onUnauthorized) onUnauthorized()
+    }
+    return Promise.reject(error)
+  },
+)
+
+// --- Auth ---
+
+export function authConfig() {
+  return api.get('/api/auth/config').then((r) => r.data)
+}
+
+export function login(email, password) {
+  return api.post('/api/auth/login', { email, password }).then((r) => r.data)
+}
+
+export function register(payload) {
+  return api.post('/api/auth/register', payload).then((r) => r.data)
+}
+
+export function fetchMe() {
+  return api.get('/api/auth/me').then((r) => r.data)
+}
+
+export function changePassword(currentPassword, newPassword) {
+  return api
+    .post('/api/auth/me/password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    })
+    .then((r) => r.data)
+}
+
+// --- Account administration (root only) ---
+
+export function fetchUsers(status = null) {
+  return api
+    .get('/api/admin/users', { params: status ? { status } : {} })
+    .then((r) => r.data)
+}
+
+export function fetchUser(id) {
+  return api.get(`/api/admin/users/${id}`).then((r) => r.data)
+}
+
+export function approveUser(id, { role, piiLevel, note = '' }) {
+  return api
+    .post(`/api/admin/users/${id}/approve`, { role, pii_level: piiLevel, note })
+    .then((r) => r.data)
+}
+
+export function rejectUser(id, note = '') {
+  return api.post(`/api/admin/users/${id}/reject`, { note }).then((r) => r.data)
+}
+
+export function updateUserGrade(id, { role = null, piiLevel = null, note = '' }) {
+  return api
+    .put(`/api/admin/users/${id}/grade`, { role, pii_level: piiLevel, note })
+    .then((r) => r.data)
+}
+
+export function updateUserStatus(id, status, note = '') {
+  return api.put(`/api/admin/users/${id}/status`, { status, note }).then((r) => r.data)
+}
+
+export function fetchUserAudit(limit = 100) {
+  return api.get('/api/admin/user-audit', { params: { limit } }).then((r) => r.data)
+}
+
 function buildParams(options = {}) {
   const params = {}
   if (options.scope) params.scope = options.scope
@@ -41,6 +142,21 @@ export function fetchFilters(options = {}) {
 
 export function fetchImportBatches() {
   return api.get('/api/import-batches').then((r) => r.data)
+}
+
+export function fetchImportBatch(id) {
+  return api.get(`/api/import-batches/${id}`).then((r) => r.data)
+}
+
+export function deleteImportBatch(id, deleteCandidates = false) {
+  // axios sends a DELETE body only via the `data` key.
+  return api
+    .delete(`/api/import-batches/${id}`, { data: { delete_candidates: deleteCandidates } })
+    .then((r) => r.data)
+}
+
+export function fetchImportFileCandidates(fileId) {
+  return api.get(`/api/import-files/${fileId}/candidates`).then((r) => r.data)
 }
 
 export function uploadPdf(file) {
@@ -109,6 +225,18 @@ export function deleteInterviewStatus(id) {
   return api.delete(`/api/interview-statuses/${id}`).then((r) => r.data)
 }
 
+export function fetchInterviewTypes() {
+  return api.get('/api/interview-types').then((r) => r.data)
+}
+
+export function createInterviewType(label, color = 'gray') {
+  return api.post('/api/interview-types', { label, color }).then((r) => r.data)
+}
+
+export function deleteInterviewType(id) {
+  return api.delete(`/api/interview-types/${id}`).then((r) => r.data)
+}
+
 export function exportCandidates(ids) {
   return api.post('/api/export/candidates', { candidate_ids: ids }).then((r) => r.data)
 }
@@ -125,3 +253,128 @@ export function exportCandidatesCsv(ids) {
 }
 
 export default api
+
+// --- Email templates ---
+
+export function fetchEmailTemplates() {
+  return api.get('/api/email-templates').then((r) => r.data)
+}
+
+export function saveEmailTemplates(templates, sender) {
+  return api.put('/api/email-templates', { templates, sender }).then((r) => r.data)
+}
+
+export function resetEmailTemplates() {
+  return api.post('/api/email-templates/reset').then((r) => r.data)
+}
+
+export function composeEmail(candidateId, templateId, interviewId = null) {
+  return api
+    .post(`/api/candidates/${candidateId}/compose-email`, {
+      template_id: templateId,
+      interview_id: interviewId,
+    })
+    .then((r) => r.data)
+}
+
+// --- Scoring configuration ---
+export function fetchScoringConfig() {
+  return api.get('/api/scoring-config').then((r) => r.data)
+}
+export function saveScoringConfig(config) {
+  return api.put('/api/scoring-config', { config }).then((r) => r.data)
+}
+export function validateScoringConfig(config) {
+  return api.post('/api/scoring-config/validate', { config }).then((r) => r.data)
+}
+export function resetScoringConfig() {
+  return api.post('/api/scoring-config/reset').then((r) => r.data)
+}
+export function fetchSchoolRoster() {
+  return api.get('/api/scoring-config/school-roster').then((r) => r.data)
+}
+export function fetchMajorCatalogue() {
+  return api.get('/api/scoring-config/major-catalogue').then((r) => r.data)
+}
+export function previewScoringConfig(config) {
+  return api.post('/api/scoring-config/preview', { config }).then((r) => r.data)
+}
+
+// --- Job postings & domain scoring profiles ---
+
+export function fetchJobPostings() {
+  return api.get('/api/job-postings').then((r) => r.data)
+}
+
+export function fetchJobPosting(id) {
+  return api.get(`/api/job-postings/${id}`).then((r) => r.data)
+}
+
+// Accepts either a File or pasted text. Generation runs two LLM calls over the
+// whole document, so this can take a minute — the default axios timeout of 0
+// (no timeout) is what we want here.
+export function uploadJobPosting({ file, text, title }) {
+  const form = new FormData()
+  if (file) form.append('file', file)
+  if (text) form.append('text', text)
+  if (title) form.append('title', title)
+  return api
+    .post('/api/job-postings/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then((r) => r.data)
+}
+
+export function saveJobProfile(id, profile, activate = false) {
+  return api
+    .put(`/api/job-postings/${id}/profile`, { profile, activate })
+    .then((r) => r.data)
+}
+
+export function regenerateJobProfile(id) {
+  return api.post(`/api/job-postings/${id}/profile/regenerate`).then((r) => r.data)
+}
+
+export function previewJobProfile(id, { profile = null, limit = 30 } = {}) {
+  return api
+    .post(`/api/job-postings/${id}/preview`, { profile, limit })
+    .then((r) => r.data)
+}
+
+export function activateJobPosting(id) {
+  return api.post(`/api/job-postings/${id}/activate`).then((r) => r.data)
+}
+
+export function deleteJobPosting(id) {
+  return api.delete(`/api/job-postings/${id}`).then((r) => r.data)
+}
+
+export function fetchProfileTemplate(id) {
+  return api.get(`/api/job-postings/${id}/profile/template`).then((r) => r.data)
+}
+
+// --- LLM provider settings -------------------------------------------------
+// The API key is never returned in clear text; a masked value echoed back on
+// save means "keep the stored key", so the form can be submitted untouched.
+
+export function fetchLLMConfig() {
+  return api.get('/api/llm-config').then((r) => r.data)
+}
+
+export function saveLLMConfig(config) {
+  return api.put('/api/llm-config', { config }).then((r) => r.data)
+}
+
+export function validateLLMConfig(config) {
+  return api.post('/api/llm-config/validate', { config }).then((r) => r.data)
+}
+
+export function resetLLMConfig() {
+  return api.post('/api/llm-config/reset').then((r) => r.data)
+}
+
+// Tests the config currently in the form, saved or not, so a key can be
+// verified before it is committed.
+export function testLLMConfig(config, section = 'chat') {
+  return api.post('/api/llm-config/test', { config, section }).then((r) => r.data)
+}

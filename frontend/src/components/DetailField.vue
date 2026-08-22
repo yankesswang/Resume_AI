@@ -1,20 +1,16 @@
 <template>
-  <div v-if="value" class="py-2 px-1">
-    <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">{{ label }}</div>
-    <div class="flex items-center gap-1 group">
-      <span class="text-sm text-gray-900">{{ value }}</span>
+  <div v-if="value" class="group py-2.5">
+    <div class="text-micro text-ink-faint">{{ label }}</div>
+    <div class="flex items-center gap-1">
+      <span class="text-base text-ink">{{ value }}</span>
       <button
         v-if="copyable"
-        class="opacity-0 group-hover:opacity-100 transition-opacity ml-1 p-0.5 rounded text-gray-400 hover:text-gray-600"
+        class="rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:text-ink group-hover:opacity-100 focus-visible:opacity-100"
+        :title="copied ? '已複製' : '複製'"
         @click.stop="doCopy"
-        :title="copied ? 'Copied!' : 'Copy'"
       >
-        <svg v-if="!copied" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-        </svg>
-        <svg v-else class="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-        </svg>
+        <Copy class="h-3.5 w-3.5" :stroke-width="2" v-if="!copied" />
+        <Check v-else class="h-3.5 w-3.5 text-good-ink" :stroke-width="2.5" />
       </button>
     </div>
   </div>
@@ -22,6 +18,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import { Check, Copy } from 'lucide-vue-next'
 
 const props = defineProps({
   label: { type: String, required: true },
@@ -34,8 +31,6 @@ const copied = ref(false)
 async function doCopy() {
   try {
     await navigator.clipboard.writeText(props.value)
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 1500)
   } catch {
     const ta = document.createElement('textarea')
     ta.value = props.value
@@ -43,8 +38,8 @@ async function doCopy() {
     ta.select()
     document.execCommand('copy')
     document.body.removeChild(ta)
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 1500)
   }
+  copied.value = true
+  setTimeout(() => { copied.value = false }, 1500)
 }
 </script>

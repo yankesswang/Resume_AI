@@ -2,101 +2,87 @@
   <div class="flex flex-col h-full overflow-hidden">
 
     <!-- Toolbar -->
-    <div class="flex items-center gap-3 px-5 py-3 bg-white border-b border-gray-100 shrink-0">
+    <div class="flex items-center gap-3 px-5 py-3 bg-surface border-b border-line shrink-0">
       <button
         @click="router.push('/')"
-        class="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+        class="p-1.5 rounded-control text-ink-faint hover:text-ink hover:bg-surface-2 transition"
       >
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
+        <ChevronLeft class="h-4 w-4" :stroke-width="2.5" />
       </button>
       <div class="flex items-center gap-2">
-        <svg class="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-        </svg>
-        <h1 class="text-sm font-semibold text-gray-900">Interested Candidates</h1>
-        <span class="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5 font-semibold">{{ bookmarks.count }}</span>
+        <Star class="h-4 w-4 text-warn-ink" />
+        <h1 class="text-small font-semibold text-ink">感興趣人選</h1>
+        <span class="text-micro bg-warn-soft text-warn-ink rounded-full px-2 py-0.5 font-semibold">{{ bookmarks.count }}</span>
       </div>
       <div class="ml-auto flex items-center gap-2">
-        <span v-if="batchQStatus" class="text-xs text-emerald-600 font-medium">{{ batchQStatus }}</span>
+        <span v-if="batchQStatus" class="text-micro text-good-ink font-medium">{{ batchQStatus }}</span>
         <!-- Add Candidate manually -->
         <button
           @click="showAddModal = true"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-blue-200 rounded-lg text-blue-700 hover:border-blue-400 hover:bg-blue-50 transition"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-micro font-semibold border border-brand-line rounded-control text-brand-ink hover:border-brand hover:bg-brand-soft transition"
         >
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          Add Candidate
+          <Plus class="h-3.5 w-3.5" :stroke-width="2" />
+          新增人選
         </button>
         <button
           :disabled="bookmarks.count === 0 || batchQRunning"
           @click="batchGenQuestions"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-emerald-200 rounded-lg text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-micro font-semibold border border-good-line rounded-control text-good-ink hover:border-good-line hover:bg-good-soft disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
-          <svg class="w-3.5 h-3.5" :class="{ 'animate-spin': batchQRunning }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+          <HelpCircle class="h-3.5 w-3.5" :class="{ 'animate-spin': batchQRunning }" :stroke-width="2" />
           {{ batchQRunning ? '生成中…' : '生成面試問題' }}
         </button>
         <button
           :disabled="bookmarks.count === 0 || exporting"
           @click="downloadCsv"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-gray-200 rounded-lg text-gray-600 hover:border-gray-300 hover:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-micro font-semibold border border-line rounded-control text-ink-muted hover:border-line-strong hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
-          <svg class="w-3.5 h-3.5" :class="{ 'animate-spin': exporting }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          {{ exporting ? 'Exporting…' : 'Export CSV' }}
+          <Download class="h-3.5 w-3.5" :class="{ 'animate-spin': exporting }" :stroke-width="2" />
+          {{ exporting ? '匯出中…' : '匯出 CSV' }}
         </button>
       </div>
     </div>
 
     <!-- Empty state -->
     <div v-if="bookmarks.count === 0" class="flex-1 flex flex-col items-center justify-center text-center px-6">
-      <svg class="w-16 h-16 text-gray-200 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-      </svg>
-      <h3 class="text-sm font-semibold text-gray-500 mb-1">No bookmarked candidates</h3>
-      <p class="text-xs text-gray-400 mb-5">Star candidates from the list to save them here.</p>
+      <Star class="h-16 w-16 text-ink-faint mb-4" :stroke-width="1" />
+      <h3 class="text-small font-semibold text-ink-muted mb-1">尚未標記任何人選</h3>
+      <p class="text-micro text-ink-faint mb-5">Star candidates from the list to save them here.</p>
       <button
         @click="router.push('/')"
-        class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+        class="inline-flex items-center gap-1.5 px-4 py-2 text-small font-semibold bg-brand text-white rounded-control hover:bg-brand-hover transition"
       >
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
+        <ChevronLeft class="h-4 w-4" :stroke-width="2" />
         Back to List
       </button>
     </div>
 
     <!-- Table -->
     <div v-else class="flex-1 overflow-auto p-5">
-      <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="bg-surface border border-line rounded-card overflow-hidden">
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-small">
             <thead>
-              <tr class="border-b border-gray-200 bg-gray-50">
+              <tr class="border-b border-line bg-surface-2">
                 <th class="w-10 px-3 py-2.5"></th>
-                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Name</th>
-                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Education</th>
-                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">School</th>
-                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Score</th>
-                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">技能</th>
-                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">面試進度</th>
-                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">面試日期</th>
-                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">作業繳交日期</th>
-                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">可到職日</th>
-                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">簡歷備注</th>
+                <th class="px-3 py-2.5 text-left text-micro font-semibold text-ink-muted whitespace-nowrap">姓名</th>
+                <th class="px-3 py-2.5 text-left text-micro font-semibold text-ink-muted whitespace-nowrap">學歷</th>
+                <th class="px-3 py-2.5 text-left text-micro font-semibold text-ink-muted whitespace-nowrap">學校</th>
+                <th class="px-3 py-2.5 text-left text-micro font-semibold text-ink-muted whitespace-nowrap">總分</th>
+                <th class="px-3 py-2.5 text-left text-micro font-semibold text-ink-muted whitespace-nowrap">技能</th>
+                <th class="px-3 py-2.5 text-left text-micro font-semibold text-ink-muted whitespace-nowrap">面試進度</th>
+                <th class="px-3 py-2.5 text-left text-micro font-semibold text-ink-muted whitespace-nowrap">面試日期</th>
+                <th class="px-3 py-2.5 text-left text-micro font-semibold text-ink-muted whitespace-nowrap">作業繳交日期</th>
+                <th class="px-3 py-2.5 text-left text-micro font-semibold text-ink-muted whitespace-nowrap">可到職日</th>
+                <th class="px-3 py-2.5 text-left text-micro font-semibold text-ink-muted whitespace-nowrap">簡歷備注</th>
               </tr>
             </thead>
 
-            <tbody class="divide-y divide-gray-100" @click="closeStatusDropdown">
+            <tbody class="divide-y divide-line" @click="closeStatusDropdown">
               <tr
                 v-for="item in candidates"
                 :key="item.id"
-                class="hover:bg-amber-50/20 transition-colors group"
+                class="hover:bg-warn-soft/20 transition-colors group"
                 :class="{ 'opacity-60': rowSaving[item.id] }"
               >
                 <!-- Actions: unstar + delete -->
@@ -104,21 +90,17 @@
                   <div class="flex items-center justify-center gap-1">
                     <button
                       @click="removeBookmark(item.id)"
-                      class="text-amber-400 hover:text-gray-400 transition opacity-50 group-hover:opacity-100"
+                      class="text-warn-ink hover:text-ink-faint transition opacity-50 group-hover:opacity-100"
                       title="Remove from interested"
                     >
-                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-                      </svg>
+                      <Star class="h-4 w-4" />
                     </button>
                     <button
                       @click="deleteRow(item.id, item.name)"
-                      class="text-gray-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100"
+                      class="text-ink-faint hover:text-bad-ink transition opacity-0 group-hover:opacity-100"
                       title="Delete candidate permanently"
                     >
-                      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
+                      <Trash2 class="h-3.5 w-3.5" :stroke-width="2" />
                     </button>
                   </div>
                 </td>
@@ -126,35 +108,31 @@
                 <!-- Name -->
                 <td class="px-3 py-2 cursor-pointer" @click="router.push(`/candidate/${item.id}`)">
                   <div class="flex items-center gap-2">
-                    <div class="w-7 h-7 rounded-full bg-gray-100 text-gray-600 text-xs font-bold flex items-center justify-center shrink-0 overflow-hidden">
-                      <img v-if="item.photo_url" :src="item.photo_url" class="w-full h-full object-cover" />
+                    <div class="h-7 w-7 rounded-full bg-surface-2 text-ink-muted text-micro font-bold flex items-center justify-center shrink-0 overflow-hidden">
+                      <img v-if="item.photo_url" :src="item.photo_url" class="h-full w-full object-cover" />
                       <span v-else>{{ item.name?.charAt(0) || '?' }}</span>
                     </div>
-                    <span class="font-semibold text-gray-900 whitespace-nowrap hover:text-blue-600 transition-colors">{{ item.name || '—' }}</span>
+                    <span class="font-semibold text-ink whitespace-nowrap hover:text-brand-ink transition-colors">{{ item.name || '—' }}</span>
                     <span
                       v-if="item.candidate_type"
                       :class="[
-                        'text-xs font-semibold border rounded-full px-2 py-0.5 whitespace-nowrap',
+                        'text-micro font-semibold border rounded-full px-2 py-0.5 whitespace-nowrap',
                         item.candidate_type === '實習'
-                          ? 'bg-sky-50 text-sky-700 border-sky-200'
-                          : 'bg-slate-50 text-slate-700 border-slate-200'
+                          ? 'bg-info-soft text-info-ink border-info-line'
+                          : 'bg-neutral-soft text-neutral-ink border-neutral-line'
                       ]"
                     >{{ item.candidate_type === '實習' ? '實習' : '工程師' }}</span>
                     <!-- Per-row save indicator -->
-                    <svg v-if="rowSaved[item.id]" class="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </svg>
-                    <svg v-if="rowSaving[item.id]" class="w-3.5 h-3.5 text-gray-300 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
+                    <Check class="h-3.5 w-3.5 text-good-ink shrink-0" :stroke-width="3" v-if="rowSaved[item.id]" />
+                    <RefreshCw class="h-3.5 w-3.5 text-ink-faint shrink-0 animate-spin" :stroke-width="2" v-if="rowSaving[item.id]" />
                   </div>
                 </td>
 
                 <!-- Education -->
-                <td class="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">{{ item.education_level || '—' }}</td>
+                <td class="px-3 py-2 text-ink-muted text-micro whitespace-nowrap">{{ item.education_level || '—' }}</td>
 
                 <!-- School -->
-                <td class="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">{{ item.school || '—' }}</td>
+                <td class="px-3 py-2 text-ink-muted text-micro whitespace-nowrap">{{ item.school || '—' }}</td>
 
                 <!-- Score -->
                 <td class="px-3 py-2">
@@ -167,9 +145,9 @@
                     <span
                       v-for="tag in (item.skill_tags || []).slice(0, 3)"
                       :key="tag"
-                      class="text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full px-2 py-0.5 whitespace-nowrap"
+                      class="text-micro bg-info-soft text-info-ink border border-info-line rounded-full px-2 py-0.5 whitespace-nowrap"
                     >{{ tag }}</span>
-                    <span v-if="(item.skill_tags || []).length > 3" class="text-xs text-gray-400 px-1">+{{ item.skill_tags.length - 3 }}</span>
+                    <span v-if="(item.skill_tags || []).length > 3" class="text-micro text-ink-faint px-1">+{{ item.skill_tags.length - 3 }}</span>
                   </div>
                 </td>
 
@@ -178,63 +156,59 @@
                   <div class="relative">
                     <button
                       @click.stop="toggleStatusDropdown(item.id)"
-                      class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition text-xs w-full min-w-[120px] text-left"
+                      class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-control border transition text-micro w-full min-w-[120px] text-left"
                       :class="rowForms[item.id]?.status
-                        ? 'border-gray-200 bg-white hover:border-gray-300'
-                        : 'border-dashed border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-white'"
+                        ? 'border-line bg-surface hover:border-line-strong'
+                        : 'border-dashed border-line bg-surface-2 hover:border-line-strong hover:bg-surface'"
                     >
                       <template v-if="rowForms[item.id]?.status">
-                        <span :class="['w-2 h-2 rounded-full shrink-0', statusDotClass(rowForms[item.id].status)]"></span>
+                        <span :class="['h-2 w-2 rounded-full shrink-0', statusDotClass(rowForms[item.id].status)]"></span>
                         <span class="font-semibold flex-1 truncate" :class="statusTextClass(rowForms[item.id].status)">
                           {{ rowForms[item.id].status }}
                         </span>
                       </template>
-                      <span v-else class="text-gray-300 italic flex-1">選擇進度…</span>
-                      <svg class="w-3 h-3 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                      </svg>
+                      <span v-else class="text-ink-faint italic flex-1">選擇進度…</span>
+                      <ChevronDown class="h-3 w-3 text-ink-faint shrink-0" :stroke-width="2.5" />
                     </button>
 
                     <!-- Dropdown menu -->
                     <div
                       v-if="activeStatusDropdown === item.id"
-                      class="absolute z-50 left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl min-w-[180px] overflow-hidden"
+                      class="absolute z-50 left-0 top-full mt-1 bg-surface border border-line rounded-card shadow-xl min-w-[180px] overflow-hidden"
                       @click.stop
                     >
                       <button
                         v-if="rowForms[item.id]?.status"
                         @click="selectStatus(item.id, null)"
-                        class="w-full text-left px-3 py-2 text-xs text-gray-400 italic hover:bg-gray-50 border-b border-gray-100"
+                        class="w-full text-left px-3 py-2 text-micro text-ink-faint italic hover:bg-surface-2 border-b border-line"
                       >清除</button>
 
                       <button
                         v-for="s in store.statuses"
                         :key="s.id"
                         @click="selectStatus(item.id, s.label)"
-                        class="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left"
+                        class="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-surface-2 text-left"
                       >
-                        <span :class="['w-2 h-2 rounded-full shrink-0', COLOR_DOTS[s.color] || 'bg-gray-400']"></span>
-                        <span class="text-sm text-gray-800 flex-1">{{ s.label }}</span>
-                        <svg v-if="rowForms[item.id]?.status === s.label" class="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                        </svg>
+                        <span :class="['h-2 w-2 rounded-full shrink-0', COLOR_DOTS[s.color] || 'bg-ink-faint']"></span>
+                        <span class="text-small text-ink flex-1">{{ s.label }}</span>
+                        <Check class="h-3.5 w-3.5 text-good-ink shrink-0" :stroke-width="3" v-if="rowForms[item.id]?.status === s.label" />
                       </button>
 
                       <!-- Add custom status -->
-                      <div class="border-t border-gray-100 px-3 py-2.5 bg-gray-50">
-                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">新增選項</p>
+                      <div class="border-t border-line px-3 py-2.5 bg-surface-2">
+                        <p class="text-micro font-semibold text-ink-faint mb-2">新增選項</p>
                         <div class="flex gap-1.5">
                           <input
                             v-model="newStatusLabel"
                             @keydown.enter.prevent="addStatusInline(item.id)"
                             @click.stop
                             placeholder="狀態名稱…"
-                            class="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            class="field flex-1 text-micro"
                           />
                           <button
                             @click="addStatusInline(item.id)"
                             :disabled="!newStatusLabel.trim()"
-                            class="text-xs px-2.5 py-1.5 bg-gray-800 text-white rounded-lg disabled:opacity-40 hover:bg-gray-700 transition shrink-0"
+                            class="btn btn-primary shrink-0 text-micro"
                           >+</button>
                         </div>
                       </div>
@@ -249,13 +223,13 @@
                       type="date"
                       v-model="rowForms[item.id].date"
                       @change="saveRow(item.id)"
-                      class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 w-[132px] bg-white"
+                      class="field w-[132px] text-micro"
                     />
                     <input
                       type="time"
                       v-model="rowForms[item.id].time"
                       @change="saveRow(item.id)"
-                      class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 w-[132px] bg-white"
+                      class="field w-[132px] text-micro"
                     />
                   </div>
                 </td>
@@ -267,7 +241,7 @@
                     type="date"
                     v-model="rowForms[item.id].assignmentDueDate"
                     @change="saveRow(item.id)"
-                    class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 w-[132px] bg-white"
+                    class="field w-[132px] text-micro"
                   />
                 </td>
 
@@ -278,7 +252,7 @@
                     type="date"
                     v-model="rowForms[item.id].availableStartDate"
                     @change="saveRow(item.id)"
-                    class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 w-[132px] bg-white"
+                    class="field w-[132px] text-micro"
                   />
                 </td>
 
@@ -291,19 +265,19 @@
                     @blur="saveRow(item.id)"
                     @keydown.enter="saveRow(item.id); $event.target.blur()"
                     placeholder="備注…"
-                    class="text-xs border border-amber-200 bg-amber-50/40 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder:text-amber-200 w-full min-w-[140px]"
+                    class="field w-full min-w-[140px] text-micro"
                   />
                 </td>
               </tr>
 
               <tr v-if="loading">
-                <td colspan="11" class="px-6 py-12 text-center text-gray-400 text-sm">Loading…</td>
+                <td colspan="11" class="px-6 py-12 text-center text-ink-faint text-small">Loading…</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <div class="px-4 py-2.5 border-t border-gray-100 text-xs text-gray-400 bg-gray-50">
+        <div class="px-4 py-2.5 border-t border-line text-micro text-ink-faint bg-surface-2">
           {{ candidates.length }} candidate{{ candidates.length !== 1 ? 's' : '' }} bookmarked
         </div>
       </div>
@@ -317,14 +291,12 @@
         @click.self="closeAddModal"
       >
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
-        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+        <div class="relative bg-surface rounded-card shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
           <!-- Modal header -->
-          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <h2 class="text-sm font-semibold text-gray-900">Add Candidate Manually</h2>
-            <button @click="closeAddModal" class="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+          <div class="flex items-center justify-between px-6 py-4 border-b border-line">
+            <h2 class="text-small font-semibold text-ink">手動新增人選</h2>
+            <button @click="closeAddModal" class="p-1.5 rounded-control text-ink-faint hover:text-ink hover:bg-surface-2 transition">
+              <X class="h-4 w-4" :stroke-width="2" />
             </button>
           </div>
 
@@ -332,34 +304,34 @@
           <form @submit.prevent="submitAddCandidate" class="px-6 py-4 space-y-3 max-h-[70vh] overflow-y-auto">
             <!-- Name -->
             <div>
-              <label class="block text-xs font-semibold text-gray-600 mb-1">Name <span class="text-red-500">*</span></label>
+              <label class="block text-micro font-semibold text-ink-muted mb-1">姓名 <span class="text-bad-ink">*</span></label>
               <input
                 v-model="addForm.name"
                 type="text"
                 required
                 placeholder="Candidate full name"
-                class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition"
+                class="w-full px-3 py-2 text-small border border-line rounded-control focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand transition"
               />
             </div>
 
             <!-- Email + Phone -->
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1">Email</label>
+                <label class="block text-micro font-semibold text-ink-muted mb-1">Email</label>
                 <input
                   v-model="addForm.email"
                   type="email"
                   placeholder="email@example.com"
-                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition"
+                  class="w-full px-3 py-2 text-small border border-line rounded-control focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand transition"
                 />
               </div>
               <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1">Phone</label>
+                <label class="block text-micro font-semibold text-ink-muted mb-1">聯絡電話</label>
                 <input
                   v-model="addForm.mobile"
                   type="text"
                   placeholder="0912-345-678"
-                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition"
+                  class="w-full px-3 py-2 text-small border border-line rounded-control focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand transition"
                 />
               </div>
             </div>
@@ -367,12 +339,12 @@
             <!-- Education + School -->
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1">Education Level</label>
+                <label class="block text-micro font-semibold text-ink-muted mb-1">最高學歷</label>
                 <select
                   v-model="addForm.education_level"
-                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition bg-white"
+                  class="w-full px-3 py-2 text-small border border-line rounded-control focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand transition bg-surface"
                 >
-                  <option value="">— Select —</option>
+                  <option value="">請選擇</option>
                   <option value="高中">高中</option>
                   <option value="大專">大專</option>
                   <option value="大學">大學</option>
@@ -381,12 +353,12 @@
                 </select>
               </div>
               <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1">School</label>
+                <label class="block text-micro font-semibold text-ink-muted mb-1">學校</label>
                 <input
                   v-model="addForm.school"
                   type="text"
                   placeholder="University / College"
-                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition"
+                  class="w-full px-3 py-2 text-small border border-line rounded-control focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand transition"
                 />
               </div>
             </div>
@@ -394,57 +366,57 @@
             <!-- Years of experience + Expected salary -->
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1">Years of Experience</label>
+                <label class="block text-micro font-semibold text-ink-muted mb-1">工作年資</label>
                 <input
                   v-model="addForm.years_of_experience"
                   type="text"
                   placeholder="e.g. 5年"
-                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition"
+                  class="w-full px-3 py-2 text-small border border-line rounded-control focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand transition"
                 />
               </div>
               <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1">Expected Salary</label>
+                <label class="block text-micro font-semibold text-ink-muted mb-1">期望薪資</label>
                 <input
                   v-model="addForm.desired_salary"
                   type="text"
                   placeholder="e.g. 80,000"
-                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition"
+                  class="w-full px-3 py-2 text-small border border-line rounded-control focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand transition"
                 />
               </div>
             </div>
 
             <!-- Skills -->
             <div>
-              <label class="block text-xs font-semibold text-gray-600 mb-1">Skills <span class="text-gray-400 font-normal">(comma-separated)</span></label>
+              <label class="block text-micro font-semibold text-ink-muted mb-1">技能 <span class="text-ink-faint font-normal">(comma-separated)</span></label>
               <input
                 v-model="addForm.skillsInput"
                 type="text"
                 placeholder="Python, React, SQL, …"
-                class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition"
+                class="w-full px-3 py-2 text-small border border-line rounded-control focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand transition"
               />
             </div>
 
             <!-- Notes -->
             <div>
-              <label class="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
+              <label class="block text-micro font-semibold text-ink-muted mb-1">備註</label>
               <textarea
                 v-model="addForm.notes"
                 rows="3"
                 placeholder="Any additional notes about this candidate…"
-                class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition resize-none"
+                class="w-full px-3 py-2 text-small border border-line rounded-control focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand transition resize-none"
               ></textarea>
             </div>
 
             <!-- Error -->
-            <p v-if="addError" class="text-xs text-red-500">{{ addError }}</p>
+            <p v-if="addError" class="text-micro text-bad-ink">{{ addError }}</p>
           </form>
 
           <!-- Modal footer -->
-          <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50">
+          <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-line bg-surface-2">
             <button
               type="button"
               @click="closeAddModal"
-              class="px-4 py-2 text-xs font-semibold text-gray-600 hover:text-gray-800 transition"
+              class="px-4 py-2 text-micro font-semibold text-ink-muted hover:text-ink transition"
             >
               Cancel
             </button>
@@ -452,11 +424,9 @@
               type="button"
               :disabled="!addForm.name.trim() || addSubmitting"
               @click="submitAddCandidate"
-              class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              class="inline-flex items-center gap-1.5 px-4 py-2 text-micro font-semibold bg-brand text-white rounded-control hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              <svg v-if="addSubmitting" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+              <RefreshCw class="h-3.5 w-3.5 animate-spin" :stroke-width="2" v-if="addSubmitting" />
               {{ addSubmitting ? 'Adding…' : 'Add & Mark Interested' }}
             </button>
           </div>
@@ -478,19 +448,20 @@ import { useBookmarkStore } from '../stores/bookmarks'
 import { useInterviewStore } from '../stores/interviews'
 import { exportCandidates, exportCandidatesCsv, batchInterviewQuestions, createManualCandidate, deleteCandidate } from '../api'
 import ScoreBadge from '../components/ScoreBadge.vue'
+import { Check, ChevronDown, ChevronLeft, Download, HelpCircle, Plus, RefreshCw, Star, Trash2, X } from 'lucide-vue-next'
 
 // ── Color maps (fully spelled-out so Tailwind won't purge) ──
 const COLOR_DOTS = {
   blue: 'bg-blue-500', purple: 'bg-purple-500', indigo: 'bg-indigo-500',
   green: 'bg-green-500', emerald: 'bg-emerald-500', teal: 'bg-teal-500',
   yellow: 'bg-yellow-400', orange: 'bg-orange-500', red: 'bg-red-500',
-  pink: 'bg-pink-500', gray: 'bg-gray-400',
+  pink: 'bg-pink-500', gray: 'bg-ink-faint',
 }
 const COLOR_TEXT = {
-  blue: 'text-blue-700', purple: 'text-purple-700', indigo: 'text-indigo-700',
-  green: 'text-green-700', emerald: 'text-emerald-700', teal: 'text-teal-700',
-  yellow: 'text-yellow-700', orange: 'text-orange-700', red: 'text-red-700',
-  pink: 'text-pink-700', gray: 'text-gray-600',
+  blue: 'text-brand-ink', purple: 'text-expert-ink', indigo: 'text-info-ink',
+  green: 'text-good-ink', emerald: 'text-good-ink', teal: 'text-info-ink',
+  yellow: 'text-yellow-700', orange: 'text-orange-700', red: 'text-bad-ink',
+  pink: 'text-pink-700', gray: 'text-ink-muted',
 }
 
 const router = useRouter()
@@ -577,10 +548,10 @@ function statusColorFor(label) {
   return store.statuses.find((s) => s.label === label)?.color || 'gray'
 }
 function statusDotClass(label) {
-  return COLOR_DOTS[statusColorFor(label)] || 'bg-gray-400'
+  return COLOR_DOTS[statusColorFor(label)] || 'bg-ink-faint'
 }
 function statusTextClass(label) {
-  return COLOR_TEXT[statusColorFor(label)] || 'text-gray-700'
+  return COLOR_TEXT[statusColorFor(label)] || 'text-ink'
 }
 
 // ── Form init ──

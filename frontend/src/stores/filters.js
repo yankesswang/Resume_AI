@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const STORAGE_KEY = 'resume-ai-filters'
 
@@ -25,8 +25,28 @@ export const useFilterStore = defineStore('filters', () => {
   const hardFilterPassedOnly = ref(saved?.hardFilterPassedOnly ?? false)
   const bookmarkedOnly = ref(saved?.bookmarkedOnly ?? false)
   const candidateType = ref(saved?.candidateType ?? null)
+  const ageRange = ref(saved?.ageRange ?? null)
   const dedupeStatus = ref(saved?.dedupeStatus ?? (saved?.uniqueOnly ? 'unique' : null))
   const importBatchId = ref(saved?.importBatchId ?? null)
+  // Whether the collapsible advanced-filter panel is expanded.
+  const panelOpen = ref(saved?.panelOpen ?? false)
+
+  // Filters that live inside the collapsible panel. Surfaced as a count on the
+  // toggle so active conditions are never hidden with no indication.
+  const advancedCount = computed(() => {
+    let n = 0
+    if (educationLevel.value) n++
+    if (experienceRange.value) n++
+    if (scoreRange.value) n++
+    if (aiTier.value != null && aiTier.value !== '') n++
+    if (candidateType.value) n++
+    if (ageRange.value) n++
+    if (dedupeStatus.value) n++
+    if (topUniversityOnly.value) n++
+    if (hardFilterPassedOnly.value) n++
+    n += selectedSkills.value.length
+    return n
+  })
 
   function persist() {
     localStorage.setItem(
@@ -42,16 +62,18 @@ export const useFilterStore = defineStore('filters', () => {
         hardFilterPassedOnly: hardFilterPassedOnly.value,
         bookmarkedOnly: bookmarkedOnly.value,
         candidateType: candidateType.value,
+        ageRange: ageRange.value,
         dedupeStatus: dedupeStatus.value,
         importBatchId: importBatchId.value,
+        panelOpen: panelOpen.value,
       })
     )
   }
 
-  watch([searchName, educationLevel, selectedSkills, experienceRange, scoreRange, topUniversityOnly, aiTier, hardFilterPassedOnly, bookmarkedOnly, candidateType, dedupeStatus, importBatchId], persist, { deep: true })
+  watch([searchName, educationLevel, selectedSkills, experienceRange, scoreRange, topUniversityOnly, aiTier, hardFilterPassedOnly, bookmarkedOnly, candidateType, ageRange, dedupeStatus, importBatchId, panelOpen], persist, { deep: true })
 
-  function clearAll() {
-    searchName.value = ''
+  /** Reset only the filters inside the collapsible panel. */
+  function clearAdvanced() {
     educationLevel.value = null
     selectedSkills.value = []
     experienceRange.value = null
@@ -59,11 +81,19 @@ export const useFilterStore = defineStore('filters', () => {
     topUniversityOnly.value = false
     aiTier.value = null
     hardFilterPassedOnly.value = false
-    bookmarkedOnly.value = false
     candidateType.value = null
+    ageRange.value = null
     dedupeStatus.value = null
+  }
+
+  function clearAll() {
+    clearAdvanced()
+    searchName.value = ''
+    bookmarkedOnly.value = false
     importBatchId.value = null
-    localStorage.removeItem(STORAGE_KEY)
+    // Keep panelOpen: whether the panel is expanded is a UI preference, not a
+    // filter, so clearing conditions should not collapse it under the user.
+    persist()
   }
 
   return {
@@ -77,8 +107,12 @@ export const useFilterStore = defineStore('filters', () => {
     hardFilterPassedOnly,
     bookmarkedOnly,
     candidateType,
+    ageRange,
     dedupeStatus,
     importBatchId,
+    panelOpen,
+    advancedCount,
+    clearAdvanced,
     clearAll,
   }
 })

@@ -1,23 +1,21 @@
 <template>
   <div class="h-full overflow-y-auto">
     <!-- Header bar -->
-    <div class="sticky top-0 z-10 flex items-center gap-3 px-5 py-3 bg-white/90 backdrop-blur border-b border-gray-200">
+    <div class="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-surface/95 px-6 py-4 backdrop-blur">
       <button
-        @click="$router.push({ name: 'list' })"
-        class="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+        @click="goBack"
+        class="p-1.5 rounded-control text-ink-faint hover:text-ink hover:bg-surface-2 transition"
       >
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
+        <ChevronLeft class="h-4 w-4" :stroke-width="2.5" />
       </button>
-      <span class="text-sm font-semibold text-gray-900">{{ candidate?.name || 'Candidate' }}</span>
+      <span class="text-small font-semibold text-ink">{{ candidate?.name || '人選資料' }}</span>
       <span
         v-if="isInterested"
-        class="text-xs font-semibold bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-2 py-0.5"
+        class="text-micro font-semibold bg-warn-soft text-warn-ink border border-warn-line rounded-full px-2 py-0.5"
       >感興趣</span>
       <span
         v-if="isInvited"
-        class="text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-full px-2 py-0.5"
+        class="text-micro font-semibold bg-good-soft text-good-ink border border-good-line rounded-full px-2 py-0.5"
       >邀請已發</span>
       <div class="ml-auto flex items-center gap-2">
         <!-- Bookmark / Interested toggle -->
@@ -26,13 +24,11 @@
           @click="bookmarkStore.toggle(Number(id))"
           :title="isInterested ? '取消標記' : '標記為感興趣'"
           :class="[
-            'p-1.5 rounded-lg transition',
-            isInterested ? 'text-amber-400 hover:text-amber-500' : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'
+            'p-1.5 rounded-control transition',
+            isInterested ? 'text-warn-ink hover:text-warn-ink' : 'text-ink-faint hover:text-ink-muted hover:bg-surface-2'
           ]"
         >
-          <svg class="w-5 h-5" :fill="isInterested ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-          </svg>
+          <Star class="h-5 w-5" :stroke-width="1.5" :fill="isInterested ? 'currentColor' : 'none'" />
         </button>
         <!-- Invitation sent toggle -->
         <button
@@ -40,102 +36,107 @@
           @click="invitationStore.toggle(Number(id))"
           :title="isInvited ? '取消邀請標記' : '標記已發邀請'"
           :class="[
-            'p-1.5 rounded-lg transition',
-            isInvited ? 'text-emerald-500 hover:text-emerald-600' : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'
+            'p-1.5 rounded-control transition',
+            isInvited ? 'text-good-ink hover:text-good-ink' : 'text-ink-faint hover:text-ink-muted hover:bg-surface-2'
           ]"
         >
-          <svg class="w-5 h-5" :fill="isInvited ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-          </svg>
+          <Mail class="h-5 w-5" :stroke-width="1.5" :fill="isInvited ? 'currentColor' : 'none'" />
+        </button>
+        <!-- Compose an email from a saved template -->
+        <button
+          v-if="candidate"
+          @click="showEmail = true"
+          title="產生信件"
+          class="inline-flex items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-micro font-medium text-ink-muted transition hover:border-line-strong hover:text-ink"
+        >
+          <Mail class="h-4 w-4" :stroke-width="1.5" />
+          寄信
         </button>
         <ScoreBadge v-if="match" :score="match.overall_score" size="default" />
       </div>
     </div>
 
+    <EmailComposeModal
+      v-if="showEmail"
+      :candidate-id="id"
+      :candidate-name="candidate?.name || ''"
+      @close="showEmail = false"
+    />
+
     <!-- Loading -->
     <div v-if="!candidate" class="flex items-center justify-center min-h-[400px]">
-      <div class="flex flex-col items-center gap-3 text-gray-400">
-        <svg class="w-8 h-8 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-        <span class="text-sm">Loading…</span>
+      <div class="flex flex-col items-center gap-3 text-ink-faint">
+        <RefreshCw class="h-8 w-8 animate-spin" :stroke-width="1.5" />
+        <span class="text-small">載入中…</span>
       </div>
     </div>
 
     <!-- Content -->
-    <div v-else class="max-w-4xl mx-auto px-5 py-6 space-y-0">
+    <div v-else class="mx-auto max-w-5xl space-y-0 px-6 py-8">
 
       <!-- Hero card -->
-      <div class="rounded-xl border border-gray-300 bg-white shadow-sm mb-5 p-6">
+      <div class="mb-6 rounded-card border border-line-strong bg-surface p-7 shadow-sm">
         <div class="flex items-start gap-5">
           <!-- Avatar -->
-          <div class="w-20 h-20 rounded-xl bg-blue-100 text-blue-700 font-bold text-2xl flex items-center justify-center shrink-0 overflow-hidden">
-            <img v-if="candidate.photo_url" :src="candidate.photo_url" class="w-full h-full object-cover" />
+          <div class="h-20 w-20 rounded-card bg-brand-soft text-brand-ink font-bold text-display flex items-center justify-center shrink-0 overflow-hidden">
+            <img v-if="candidate.photo_url" :src="candidate.photo_url" class="h-full w-full object-cover" />
             <span v-else>{{ candidate.name?.charAt(0) || '?' }}</span>
           </div>
 
           <div class="flex-1 min-w-0">
             <!-- Name row -->
             <div class="flex items-center gap-2 flex-wrap">
-              <h1 class="text-2xl font-bold text-gray-900">{{ candidate.name }}</h1>
+              <h1 class="text-display font-bold text-ink">{{ candidate.name }}</h1>
               <button
-                class="p-1 rounded text-gray-300 hover:text-gray-600 transition"
+                class="p-1 rounded text-ink-faint hover:text-ink-muted transition"
                 @click="copyText(candidate.name, 'name')"
-                title="Copy name"
+                title="複製姓名"
               >
-                <svg v-if="!nameCopied" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <svg v-else class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
+                <Copy class="h-4 w-4" :stroke-width="2" v-if="!nameCopied" />
+                <Check v-else class="h-4 w-4 text-good-ink" :stroke-width="2.5" />
               </button>
-              <span v-if="candidate.english_name" class="text-base text-gray-400 font-normal">{{ candidate.english_name }}</span>
+              <span v-if="candidate.english_name" class="text-base text-ink-faint font-normal">{{ candidate.english_name }}</span>
               <span
                 v-if="candidate.candidate_type"
                 :class="[
-                  'text-xs font-semibold border rounded-full px-2 py-0.5 whitespace-nowrap',
+                  'text-micro font-semibold border rounded-full px-2 py-0.5 whitespace-nowrap',
                   candidate.candidate_type === '實習'
-                    ? 'bg-sky-50 text-sky-700 border-sky-200'
-                    : 'bg-slate-50 text-slate-700 border-slate-200'
+                    ? 'bg-info-soft text-info-ink border-info-line'
+                    : 'bg-neutral-soft text-neutral-ink border-neutral-line'
                 ]"
               >{{ candidate.candidate_type === '實習' ? '實習' : '工程師' }}</span>
             </div>
 
             <!-- 104 Code -->
-            <div v-if="candidate.code_104" class="flex items-center gap-1.5 mt-1 text-sm text-gray-500">
-              <span class="font-mono text-xs bg-gray-100 rounded px-1.5 py-0.5 text-gray-600">{{ candidate.code_104 }}</span>
-              <button @click="copyText(candidate.code_104, 'code')" class="text-gray-300 hover:text-gray-600 transition">
-                <svg v-if="!codeCopied" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <svg v-else class="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
+            <div v-if="candidate.code_104" class="flex items-center gap-1.5 mt-1 text-small text-ink-muted">
+              <span class="font-mono text-micro bg-surface-2 rounded px-1.5 py-0.5 text-ink-muted">{{ candidate.code_104 }}</span>
+              <button @click="copyText(candidate.code_104, 'code')" class="text-ink-faint hover:text-ink-muted transition">
+                <Copy class="h-3.5 w-3.5" :stroke-width="2" v-if="!codeCopied" />
+                <Check v-else class="h-3.5 w-3.5 text-good-ink" :stroke-width="2.5" />
               </button>
             </div>
 
             <!-- Summary line -->
-            <div class="mt-2 text-sm text-gray-600 flex flex-wrap gap-1.5 items-center">
-              <span v-if="calculatedAge != null" class="font-semibold text-gray-800">{{ calculatedAge }} 歲</span>
-              <span v-if="calculatedAge != null" class="text-gray-300">·</span>
-              <span class="font-semibold text-gray-800">{{ candidate.education_level }}</span>
-              <span v-if="candidate.school" class="text-gray-300">·</span>
+            <div class="mt-2 text-small text-ink-muted flex flex-wrap gap-1.5 items-center">
+              <span v-if="calculatedAge != null" class="font-semibold text-ink">{{ calculatedAge }} 歲</span>
+              <span v-if="calculatedAge != null" class="text-ink-faint">·</span>
+              <span class="font-semibold text-ink">{{ candidate.education_level }}</span>
+              <span v-if="candidate.school" class="text-ink-faint">·</span>
               <span v-if="candidate.school">{{ candidate.school }}</span>
-              <span class="text-gray-300">·</span>
+              <span class="text-ink-faint">·</span>
               <span>{{ candidate.years_of_experience || '無工作經驗' }}</span>
             </div>
 
-            <div v-if="candidate.ideal_positions?.length" class="mt-1 text-sm text-gray-500">
+            <div v-if="candidate.ideal_positions?.length" class="mt-1 text-small text-ink-muted">
               {{ candidate.ideal_positions.join(' / ') }}
             </div>
 
             <!-- Score badges -->
             <div v-if="match" class="mt-3 flex items-center gap-2 flex-wrap">
-              <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Match Score</span>
+              <span class="text-micro font-semibold text-ink-faint">總分</span>
               <ScoreBadge :score="match.overall_score" size="large" />
               <TierBadge
-                v-if="match.experience_detail?.tier"
+                v-if="match.experience_detail?.tier != null"
                 :tier="match.experience_detail.tier"
                 :tier-label="match.experience_detail.tier_label"
               />
@@ -145,122 +146,118 @@
       </div>
 
       <!-- Basic Information -->
-      <SectionCard title="Basic Information">
+      <SectionCard title="基本資料">
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4">
-          <DetailField label="Birth Year" :value="candidate.birth_year" />
-          <DetailField label="Age" :value="calculatedAge != null ? `${calculatedAge} 歲` : candidate.age" />
-          <DetailField label="Nationality" :value="candidate.nationality" />
-          <DetailField label="Current Status" :value="candidate.current_status" />
-          <DetailField label="Earliest Start" :value="candidate.earliest_start" />
-          <DetailField label="Military Status" :value="candidate.military_status" />
-          <DetailField label="Desired Salary" :value="candidate.desired_salary" copyable />
-          <DetailField label="Work Type" :value="candidate.work_type" />
-          <DetailField label="District" :value="candidate.district" />
-          <DetailField label="Desired Industry" :value="candidate.desired_industry" />
+          <DetailField label="出生年" :value="candidate.birth_year" />
+          <DetailField label="年齡" :value="calculatedAge != null ? `${calculatedAge} 歲` : candidate.age" />
+          <DetailField label="國籍" :value="candidate.nationality" />
+          <DetailField label="目前狀態" :value="candidate.current_status" />
+          <DetailField label="最快到職" :value="candidate.earliest_start" />
+          <DetailField label="兵役狀況" :value="candidate.military_status" />
+          <DetailField label="期望薪資" :value="candidate.desired_salary" copyable />
+          <DetailField label="求職身份" :value="candidate.work_type" />
+          <DetailField label="居住地區" :value="candidate.district" />
+          <DetailField label="期望產業" :value="candidate.desired_industry" />
         </div>
         <div v-if="candidate.desired_locations?.length" class="mt-3">
-          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Desired Locations</div>
+          <div class="text-micro font-semibold text-ink-faint mb-1.5">期望工作地點</div>
           <div class="flex flex-wrap gap-1.5">
-            <span v-for="loc in candidate.desired_locations" :key="loc" class="text-xs bg-purple-50 text-purple-700 border border-purple-100 rounded-full px-2.5 py-0.5">{{ loc }}</span>
+            <span v-for="loc in candidate.desired_locations" :key="loc" class="text-micro bg-expert-soft text-expert-ink border border-expert-line rounded-full px-2.5 py-0.5">{{ loc }}</span>
           </div>
         </div>
         <div v-if="candidate.desired_job_categories?.length" class="mt-3">
-          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Job Categories</div>
+          <div class="text-micro font-semibold text-ink-faint mb-1.5">期望職務類別</div>
           <div class="flex flex-wrap gap-1.5">
-            <span v-for="cat in candidate.desired_job_categories" :key="cat" class="text-xs bg-gray-100 text-gray-600 border border-gray-200 rounded-full px-2.5 py-0.5">{{ cat }}</span>
+            <span v-for="cat in candidate.desired_job_categories" :key="cat" class="text-micro bg-surface-2 text-ink-muted border border-line rounded-full px-2.5 py-0.5">{{ cat }}</span>
           </div>
         </div>
       </SectionCard>
 
       <!-- Contact -->
-      <SectionCard title="Contact">
+      <SectionCard title="聯絡方式">
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4">
           <DetailField label="Email" :value="candidate.email" copyable />
-          <DetailField label="Mobile 1" :value="candidate.mobile1" copyable />
-          <DetailField label="Mobile 2" :value="candidate.mobile2" copyable />
-          <DetailField label="Phone (Home)" :value="candidate.phone_home" copyable />
-          <DetailField label="Phone (Work)" :value="candidate.phone_work" copyable />
-          <DetailField label="Address" :value="candidate.mailing_address" copyable />
+          <DetailField label="手機 1" :value="candidate.mobile1" copyable />
+          <DetailField label="手機 2" :value="candidate.mobile2" copyable />
+          <DetailField label="住家電話" :value="candidate.phone_home" copyable />
+          <DetailField label="公司電話" :value="candidate.phone_work" copyable />
+          <DetailField label="通訊地址" :value="candidate.mailing_address" copyable />
         </div>
         <div v-if="candidate.linkedin_url" class="mt-3">
-          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">LinkedIn</div>
+          <div class="text-micro font-semibold text-ink-faint mb-1">LinkedIn</div>
           <div class="flex items-center gap-2">
-            <a :href="candidate.linkedin_url" target="_blank" class="text-sm text-blue-600 hover:underline truncate max-w-xs">
+            <a :href="candidate.linkedin_url" target="_blank" class="text-small text-brand-ink hover:underline truncate max-w-xs">
               {{ candidate.linkedin_url }}
             </a>
-            <button @click="copyText(candidate.linkedin_url, 'linkedin')" class="text-gray-300 hover:text-gray-600 transition shrink-0">
-              <svg v-if="!linkedinCopied" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-              <svg v-else class="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
+            <button @click="copyText(candidate.linkedin_url, 'linkedin')" class="text-ink-faint hover:text-ink-muted transition shrink-0">
+              <Copy class="h-3.5 w-3.5" :stroke-width="2" v-if="!linkedinCopied" />
+              <Check v-else class="h-3.5 w-3.5 text-good-ink" :stroke-width="2.5" />
             </button>
           </div>
         </div>
       </SectionCard>
 
       <!-- Work Experience -->
-      <SectionCard title="Work Experience">
-        <div v-if="!candidate.work_experiences?.length" class="text-sm text-gray-400 py-2">無工作經驗</div>
+      <SectionCard title="工作經歷">
+        <div v-if="!candidate.work_experiences?.length" class="text-small text-ink-faint py-2">無工作經驗</div>
         <div
           v-for="we in candidate.work_experiences"
           :key="we.id"
-          class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-3 last:mb-0"
+          class="bg-surface-2 border border-line rounded-control p-4 mb-3 last:mb-0"
         >
           <div class="flex justify-between items-start gap-3 flex-wrap mb-2">
             <div>
-              <div class="font-semibold text-gray-900">{{ we.job_title }}</div>
-              <div class="text-sm text-gray-600 mt-0.5">{{ we.company_name }}</div>
+              <div class="text-title font-semibold text-ink">{{ we.job_title }}</div>
+              <div class="text-base text-ink-muted mt-0.5">{{ we.company_name }}</div>
             </div>
-            <span class="text-xs bg-blue-50 text-blue-700 border border-blue-100 rounded-full px-2.5 py-1 shrink-0">
+            <span class="text-micro bg-brand-soft text-brand-ink border border-brand-line rounded-full px-2.5 py-1 shrink-0">
               {{ we.date_start }} ~ {{ we.date_end }}
               <span v-if="we.duration"> ({{ we.duration }})</span>
             </span>
           </div>
           <div v-if="we.industry || we.company_size || we.job_category || we.management_responsibility" class="flex flex-wrap gap-1.5 mb-2">
-            <span v-if="we.industry" class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{{ we.industry }}</span>
-            <span v-if="we.company_size" class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{{ we.company_size }}</span>
-            <span v-if="we.job_category" class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{{ we.job_category }}</span>
-            <span v-if="we.management_responsibility && we.management_responsibility !== '無'" class="text-xs bg-amber-50 text-amber-700 border border-amber-100 rounded-full px-2 py-0.5">{{ we.management_responsibility }}</span>
+            <span v-if="we.industry" class="text-micro bg-surface-2 text-ink-muted rounded-full px-2 py-0.5">{{ we.industry }}</span>
+            <span v-if="we.company_size" class="text-micro bg-surface-2 text-ink-muted rounded-full px-2 py-0.5">{{ we.company_size }}</span>
+            <span v-if="we.job_category" class="text-micro bg-surface-2 text-ink-muted rounded-full px-2 py-0.5">{{ we.job_category }}</span>
+            <span v-if="we.management_responsibility && we.management_responsibility !== '無'" class="text-micro bg-warn-soft text-warn-ink border border-warn-line rounded-full px-2 py-0.5">{{ we.management_responsibility }}</span>
           </div>
-          <div v-if="we.job_description" class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ we.job_description }}</div>
+          <div v-if="we.job_description" class="text-base text-ink whitespace-pre-wrap leading-relaxed">{{ we.job_description }}</div>
         </div>
       </SectionCard>
 
       <!-- Education -->
-      <SectionCard title="Education">
-        <div v-if="!candidate.education?.length" class="text-sm text-gray-400 py-2">No education records.</div>
+      <SectionCard title="學歷">
+        <div v-if="!candidate.education?.length" class="text-small text-ink-faint py-2">無學歷資料</div>
         <div
           v-for="ed in candidate.education"
           :key="ed.id"
-          class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-3 last:mb-0"
+          class="bg-surface-2 border border-line rounded-control p-4 mb-3 last:mb-0"
         >
           <div class="flex justify-between items-start gap-3 flex-wrap mb-2">
             <div>
-              <div class="font-semibold text-gray-900">{{ ed.school }}</div>
-              <div class="text-sm text-gray-600 mt-0.5">
+              <div class="text-title font-semibold text-ink">{{ ed.school }}</div>
+              <div class="text-base text-ink-muted mt-0.5">
                 {{ ed.department }}<span v-if="ed.degree_level"> · {{ ed.degree_level }}</span>
               </div>
             </div>
-            <span class="text-xs bg-blue-50 text-blue-700 border border-blue-100 rounded-full px-2.5 py-1 shrink-0">
+            <span class="text-micro bg-brand-soft text-brand-ink border border-brand-line rounded-full px-2.5 py-1 shrink-0">
               {{ ed.date_start }} ~ {{ ed.date_end }}
             </span>
           </div>
           <div v-if="ed.region || ed.status" class="flex flex-wrap gap-1.5">
-            <span v-if="ed.region" class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{{ ed.region }}</span>
-            <span v-if="ed.status" class="text-xs bg-sky-50 text-sky-700 border border-sky-100 rounded-full px-2 py-0.5">{{ ed.status }}</span>
+            <span v-if="ed.region" class="text-micro bg-surface-2 text-ink-muted rounded-full px-2 py-0.5">{{ ed.region }}</span>
+            <span v-if="ed.status" class="text-micro bg-info-soft text-info-ink border border-info-line rounded-full px-2 py-0.5">{{ ed.status }}</span>
           </div>
         </div>
       </SectionCard>
 
       <!-- Skills -->
-      <SectionCard title="Skills">
+      <SectionCard title="技能專長">
         <div v-if="candidate.skill_tags?.length" class="flex flex-wrap gap-1.5 mb-4">
           <span
             v-for="tag in candidate.skill_tags"
             :key="tag"
-            class="text-sm bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-3 py-1 font-medium"
+            class="text-small bg-brand-soft text-brand-ink border border-brand-line rounded-full px-3 py-1 font-medium"
           >{{ tag }}</span>
         </div>
         <MarkdownContent v-if="candidate.skills_text" :content="candidate.skills_text" />
@@ -287,19 +284,16 @@
       </SectionCard>
 
       <!-- Match Analysis -->
-      <SectionCard title="Match Analysis">
+      <SectionCard title="評分分析">
         <div v-if="!match" class="flex items-center gap-4 py-2">
-          <span class="text-sm text-gray-400">No match result yet.</span>
+          <span class="text-small text-ink-faint">尚未產生評分結果</span>
           <button
             @click="doMatch"
             :disabled="matching"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-small font-semibold bg-brand text-white rounded-control hover:bg-brand-hover disabled:opacity-50 transition"
           >
-            <svg class="w-4 h-4" :class="{ 'animate-spin': matching }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {{ matching ? 'Running…' : 'Run Match' }}
+            <PlayCircle class="h-4 w-4" :class="{ 'animate-spin': matching }" :stroke-width="2" />
+            {{ matching ? '評分中…' : '執行評分' }}
           </button>
         </div>
         <template v-else>
@@ -307,12 +301,10 @@
           <button
             @click="doMatch"
             :disabled="matching"
-            class="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg text-gray-600 hover:border-gray-300 hover:text-gray-800 disabled:opacity-50 transition"
+            class="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-small font-medium border border-line rounded-control text-ink-muted hover:border-line-strong hover:text-ink disabled:opacity-50 transition"
           >
-            <svg class="w-4 h-4" :class="{ 'animate-spin': matching }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {{ matching ? 'Running…' : 'Re-run Match' }}
+            <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': matching }" :stroke-width="2" />
+            {{ matching ? '評分中…' : '重新評分' }}
           </button>
         </template>
       </SectionCard>
@@ -320,77 +312,67 @@
       <!-- Interview Questions (shown only when bookmarked / "interested") -->
       <SectionCard v-if="isInterested" title="面試問題">
         <div v-if="!interviewQuestions && !generatingQuestions" class="flex items-center gap-4 py-2">
-          <span class="text-sm text-gray-400">點擊生成針對此候選人量身訂製的中文面試問題。</span>
+          <span class="text-small text-ink-faint">點擊生成針對此候選人量身訂製的中文面試問題。</span>
           <button
             @click="doGenerateQuestions"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-small font-semibold border border-good-line bg-good-soft text-good-ink rounded-control hover:border-good-ink transition"
           >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            <HelpCircle class="h-4 w-4" :stroke-width="2" />
             生成面試問題
           </button>
         </div>
 
         <div v-else-if="questionsError" class="flex items-start gap-3 py-3">
-          <svg class="w-5 h-5 text-red-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-          </svg>
+          <AlertTriangle class="h-5 w-5 text-bad-ink shrink-0 mt-0.5" :stroke-width="2" />
           <div>
-            <div class="text-sm text-red-600 font-medium">生成失敗</div>
-            <div class="text-xs text-gray-400 mt-0.5">{{ questionsError }}</div>
-            <button @click="doGenerateQuestions" class="mt-2 text-xs text-blue-600 hover:underline">重試</button>
+            <div class="text-small text-bad-ink font-medium">生成失敗</div>
+            <div class="text-micro text-ink-faint mt-0.5">{{ questionsError }}</div>
+            <button @click="doGenerateQuestions" class="mt-2 text-micro text-brand-ink hover:underline">重試</button>
           </div>
         </div>
 
-        <div v-else-if="generatingQuestions" class="flex items-center gap-3 py-4 text-gray-400">
-          <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          <span class="text-sm">AI 正在生成面試問題…</span>
+        <div v-else-if="generatingQuestions" class="flex items-center gap-3 py-4 text-ink-faint">
+          <RefreshCw class="h-5 w-5 animate-spin" :stroke-width="1.5" />
+          <span class="text-small">AI 正在生成面試問題…</span>
         </div>
 
         <template v-else-if="interviewQuestions">
           <!-- Group by category -->
           <div v-for="(group, cat) in groupedQuestions" :key="cat" class="mb-5 last:mb-0">
-            <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+            <div class="text-micro font-semibold text-ink-faint mb-2 flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-400 inline-block"></span>
               {{ cat }}
             </div>
-            <div v-for="(q, idx) in group" :key="idx" class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-2 last:mb-0">
-              <div class="text-sm font-medium text-gray-800 leading-relaxed">{{ q.question }}</div>
-              <div v-if="q.purpose" class="mt-1.5 text-xs text-gray-400 italic">目的：{{ q.purpose }}</div>
+            <div v-for="(q, idx) in group" :key="idx" class="bg-surface-2 border border-line rounded-control p-4 mb-2 last:mb-0">
+              <div class="text-small font-medium text-ink leading-relaxed">{{ q.question }}</div>
+              <div v-if="q.purpose" class="mt-1.5 text-micro text-ink-faint italic">目的：{{ q.purpose }}</div>
             </div>
           </div>
           <button
             @click="doGenerateQuestions"
             :disabled="generatingQuestions"
-            class="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg text-gray-600 hover:border-gray-300 hover:text-gray-800 disabled:opacity-50 transition"
+            class="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-small font-medium border border-line rounded-control text-ink-muted hover:border-line-strong hover:text-ink disabled:opacity-50 transition"
           >
-            <svg class="w-4 h-4" :class="{ 'animate-spin': generatingQuestions }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': generatingQuestions }" :stroke-width="2" />
             重新生成
           </button>
         </template>
       </SectionCard>
 
       <!-- Attachments -->
-      <SectionCard v-if="candidate.attachments?.length" title="Attachments">
+      <SectionCard v-if="candidate.attachments?.length" title="附件">
         <div class="space-y-2">
           <div
             v-for="att in candidate.attachments"
             :key="att.id"
-            class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100"
+            class="flex items-center gap-3 p-3 bg-surface-2 rounded-control border border-line"
           >
-            <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center shrink-0">
-              <svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
+            <div class="h-8 w-8 bg-surface-2 rounded-control flex items-center justify-center shrink-0">
+              <FileText class="h-4 w-4 text-ink-muted" :stroke-width="1.5" />
             </div>
             <div>
-              <div class="text-sm font-semibold text-gray-800">{{ att.name || att.attachment_type }}</div>
-              <div v-if="att.description" class="text-xs text-gray-500">{{ att.description }}</div>
+              <div class="text-small font-semibold text-ink">{{ att.name || att.attachment_type }}</div>
+              <div v-if="att.description" class="text-micro text-ink-muted">{{ att.description }}</div>
             </div>
           </div>
         </div>
@@ -401,6 +383,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { fetchCandidate, fetchMatchResult, triggerMatch, generateInterviewQuestions } from '../api'
 import { useBookmarkStore } from '../stores/bookmarks'
 import { useInvitationStore } from '../stores/invitations'
@@ -410,15 +393,26 @@ import ScoreCard from '../components/ScoreCard.vue'
 import SectionCard from '../components/SectionCard.vue'
 import DetailField from '../components/DetailField.vue'
 import MarkdownContent from '../components/MarkdownContent.vue'
+import EmailComposeModal from '../components/EmailComposeModal.vue'
+import { AlertTriangle, Check, ChevronLeft, Copy, FileText, HelpCircle, Mail, PlayCircle, RefreshCw, Star } from 'lucide-vue-next'
 
 const props = defineProps({
   id: { type: [String, Number], required: true },
 })
 
+const router = useRouter()
 const bookmarkStore = useBookmarkStore()
 const invitationStore = useInvitationStore()
 const isInterested = computed(() => bookmarkStore.has(Number(props.id)))
 const isInvited = computed(() => invitationStore.has(Number(props.id)))
+
+// Return to wherever the candidate was opened from (import batch, bookmarks,
+// list). Falls back to the candidate list when there is no history to go back
+// to, e.g. when the detail URL was opened directly.
+function goBack() {
+  if (window.history.state?.back) router.back()
+  else router.push({ name: 'list' })
+}
 
 const candidate = ref(null)
 const calculatedAge = computed(() => {
@@ -430,6 +424,7 @@ const calculatedAge = computed(() => {
 })
 const match = ref(null)
 const matching = ref(false)
+const showEmail = ref(false)
 const nameCopied = ref(false)
 const codeCopied = ref(false)
 const linkedinCopied = ref(false)

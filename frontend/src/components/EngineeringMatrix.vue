@@ -1,28 +1,28 @@
 <template>
   <div>
     <div class="flex items-center gap-2 mb-4">
-      <span class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Engineering Maturity</span>
-      <span :class="['text-xs font-semibold px-2 py-0.5 rounded-full', mEngColorClass]">
+      <span class="text-micro font-semibold text-ink">工程成熟度</span>
+      <span :class="['text-micro font-semibold px-2 py-0.5 rounded-full', mEngColorClass]">
         M_Eng = {{ mEng }}
       </span>
     </div>
 
     <div v-for="dim in dimensions" :key="dim.key" class="mb-3">
       <div class="flex justify-between items-center mb-1">
-        <span class="text-xs text-gray-600">{{ dim.label }}</span>
-        <span class="text-xs font-semibold text-gray-700">
+        <span class="text-micro text-ink-muted">{{ dim.label }}</span>
+        <span class="text-micro font-semibold text-ink">
           Level {{ dim.level }}/3
-          <span class="text-gray-400 ml-1">(+{{ dim.score }})</span>
+          <span class="text-ink-faint ml-1">(+{{ dim.score }})</span>
         </span>
       </div>
-      <div class="bg-gray-100 rounded-full h-2 overflow-hidden">
+      <div class="bg-surface-2 rounded-full h-2 overflow-hidden">
         <div
           class="h-2 rounded-full transition-all duration-500"
           :class="dim.barColor"
           :style="{ width: `${(dim.level / 3) * 100}%` }"
         />
       </div>
-      <div class="text-xs text-gray-400 mt-0.5">{{ levelLabels[dim.level] }}</div>
+      <div class="text-micro text-ink-faint mt-0.5">{{ levelLabels[dim.level] }}</div>
     </div>
   </div>
 </template>
@@ -37,10 +37,10 @@ const props = defineProps({
 const mEng = computed(() => props.detail?.m_eng ?? 0)
 const mEngColorClass = computed(() => {
   const v = mEng.value
-  if (v >= 0.3) return 'bg-green-100 text-green-700'
-  if (v >= 0.15) return 'bg-blue-100 text-blue-700'
-  if (v > 0) return 'bg-amber-100 text-amber-700'
-  return 'bg-gray-100 text-gray-500'
+  if (v >= 0.3) return 'bg-good-soft text-good-ink'
+  if (v >= 0.15) return 'bg-brand-soft text-brand-ink'
+  if (v > 0) return 'bg-warn-soft text-warn-ink'
+  return 'bg-surface-2 text-ink-muted'
 })
 
 const levelLabels = { 0: 'None', 1: 'Basic', 2: 'Production', 3: 'Advanced' }

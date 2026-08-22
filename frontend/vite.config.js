@@ -7,7 +7,11 @@ export default defineConfig({
   server: {
     host: true,
     allowedHosts: ['factory-louis-relating-website.trycloudflare.com'],
-    port: 5173,
+    port: 3002,
+    // Fail loudly on a port clash instead of silently moving to the next free
+    // port: a dev server that quietly relocates leaves the browser pointing at
+    // a stale tab and the proxy config apparently broken.
+    strictPort: true,
     proxy: {
       '/api': 'http://127.0.0.1:8000',
       '/output': 'http://127.0.0.1:8000',

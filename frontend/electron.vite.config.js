@@ -31,7 +31,8 @@ export default defineConfig({
       },
     },
     server: {
-      port: 5173,
+      port: 3002,
+      strictPort: true,
       proxy: {
         '/api': 'http://127.0.0.1:8000',
         '/output': 'http://127.0.0.1:8000',

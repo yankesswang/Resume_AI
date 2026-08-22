@@ -1,12 +1,12 @@
 <template>
-  <div class="rounded-xl border border-gray-300 bg-white shadow-sm mb-5 overflow-hidden">
-    <div class="px-5 py-3.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-      <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide">{{ title }}</h2>
-    </div>
+  <section class="card mb-4 overflow-hidden">
+    <header class="border-b border-line bg-surface-2 px-5 py-3.5">
+      <h2 class="text-title font-semibold text-ink">{{ title }}</h2>
+    </header>
     <div class="p-5">
       <slot />
     </div>
-  </div>
+  </section>
 </template>
 
 <script setup>

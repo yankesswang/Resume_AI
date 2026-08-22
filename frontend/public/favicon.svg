@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <title>Resume AI</title>
+  <!-- Brand tile: same blue-600 / rounded-md as the navbar logo in App.vue -->
+  <rect width="32" height="32" rx="7" fill="#2563EB"/>
+  <!-- Document silhouette with a folded top-right corner. Drawn as a filled
+       shape rather than a stroked outline so it stays solid at 16px. -->
+  <path fill="#FFFFFF"
+        d="M10.6 6.1h7.7l5.3 5.3v12.5a2.5 2.5 0 0 1-2.5 2.5H10.6a2.5 2.5 0 0 1-2.5-2.5V8.6a2.5 2.5 0 0 1 2.5-2.5z"/>
+  <!-- Turned-back corner -->
+  <path fill="#2563EB" d="M18.5 6.4v5h5z"/>
+  <!-- Text lines knocked out of the page -->
+  <g fill="#2563EB">
+    <rect x="11.3" y="15.7" width="9.4" height="2.1" rx="1.05"/>
+    <rect x="11.3" y="19.6" width="9.4" height="2.1" rx="1.05"/>
+  </g>
+</svg>

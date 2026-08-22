@@ -1,6 +1,11 @@
 <template>
-  <span :class="[baseClass, colorClass, sizeClass]">
-    {{ label }}
+  <span v-if="score == null" class="text-small text-ink-faint">—</span>
+  <!-- Score is the primary ranking signal, so it reads as a number with a
+       colour cue rather than a filled pill — pills at every severity made
+       every row shout equally loudly. -->
+  <span v-else class="inline-flex items-baseline gap-1 font-semibold tabular-nums" :class="toneClass">
+    <span :class="size === 'large' ? 'text-display' : 'text-base'">{{ label }}</span>
+    <span v-if="size === 'large'" class="text-small font-normal text-ink-faint">/ 100</span>
   </span>
 </template>
 
@@ -12,23 +17,15 @@ const props = defineProps({
   size: { type: String, default: 'default' },
 })
 
-const colorClass = computed(() => {
-  if (props.score == null) return 'bg-gray-100 text-gray-500 border border-gray-200'
-  if (props.score >= 80) return 'bg-green-100 text-green-700'
-  if (props.score >= 60) return 'bg-blue-100 text-blue-700'
-  if (props.score >= 40) return 'bg-amber-100 text-amber-700'
-  return 'bg-red-100 text-red-700'
+const toneClass = computed(() => {
+  if (props.score >= 80) return 'text-good-ink'
+  if (props.score >= 60) return 'text-info-ink'
+  if (props.score >= 40) return 'text-warn-ink'
+  return 'text-bad-ink'
 })
 
-const sizeClass = computed(() =>
-  props.size === 'large' ? 'text-lg px-3 py-1' : 'text-xs px-2 py-0.5'
-)
-
-const baseClass = 'inline-flex items-center justify-center rounded-full font-semibold tabular-nums'
-
 const label = computed(() => {
-  if (props.score == null) return '--'
   const value = Number(props.score)
-  return Number.isFinite(value) ? value.toFixed(1) : '--'
+  return Number.isFinite(value) ? value.toFixed(1) : '—'
 })
 </script>

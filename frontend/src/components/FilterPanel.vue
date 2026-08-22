@@ -1,207 +1,208 @@
 <template>
-  <div class="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-    <div class="flex flex-wrap gap-2 items-center">
-      <!-- Search -->
-      <div class="relative flex-shrink-0">
-        <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z" />
-        </svg>
+  <div class="card mb-4">
+    <!-- Primary row: the controls reached for on nearly every search. -->
+    <div class="flex flex-wrap items-center gap-3 p-4">
+      <div class="relative">
+        <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" :stroke-width="2" />
         <input
           v-model="filters.searchName"
           type="text"
-          placeholder="Name / 104 Code"
-          class="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition w-44"
+          placeholder="搜尋姓名或 104 代碼"
+          class="field w-64 pl-9"
         />
       </div>
 
-      <!-- Education -->
-      <select
-        v-model="filters.educationLevel"
-        class="py-1.5 pl-2.5 pr-7 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition appearance-none w-32"
-      >
-        <option :value="null">Education</option>
-        <option v-for="lvl in educationLevels" :key="lvl" :value="lvl">{{ lvl }}</option>
-      </select>
-
-      <!-- Experience -->
-      <select
-        v-model="filters.experienceRange"
-        class="py-1.5 pl-2.5 pr-7 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition appearance-none w-32"
-      >
-        <option :value="null">Experience</option>
-        <option v-for="r in experienceRanges" :key="r" :value="r">{{ r }}</option>
-      </select>
-
-      <!-- Score -->
-      <select
-        v-model="filters.scoreRange"
-        class="py-1.5 pl-2.5 pr-7 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition appearance-none w-28"
-      >
-        <option :value="null">Score</option>
-        <option v-for="r in scoreRanges" :key="r" :value="r">{{ r }}</option>
-      </select>
-
-      <!-- AI Tier -->
-      <select
-        v-model="filters.aiTier"
-        class="py-1.5 pl-2.5 pr-7 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition appearance-none w-36"
-      >
-        <option :value="null">AI Tier</option>
-        <option v-for="t in tierItems" :key="t.value" :value="t.value">{{ t.title }}</option>
-      </select>
-
-      <!-- Candidate Type -->
-      <select
-        v-model="filters.candidateType"
-        class="py-1.5 pl-2.5 pr-7 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition appearance-none w-28"
-      >
-        <option :value="null">身分</option>
-        <option value="實習">實習</option>
-        <option value="正職">工程師</option>
-      </select>
-
-      <!-- Import Batch -->
       <select
         v-if="importBatches.length"
         v-model="filters.importBatchId"
-        class="py-1.5 pl-2.5 pr-7 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition appearance-none w-48"
+        class="field w-56"
+        :class="{ 'field-active': filters.importBatchId }"
       >
-        <option :value="null">Batch</option>
+        <option :value="null">全部匯入批次</option>
         <option v-for="batch in importBatches" :key="batch.id" :value="batch.id">
-          {{ batch.batch_name }} ({{ batch.total_candidates }})
+          {{ batch.batch_name }}（{{ batch.total_candidates }}）
         </option>
       </select>
 
-      <!-- Skills autocomplete -->
-      <div class="relative flex-shrink-0">
-        <div
-          class="flex items-center gap-1.5 pl-2 pr-2 py-1.5 border rounded-lg bg-gray-50 focus-within:bg-white focus-within:ring-1 transition cursor-text"
-          :class="filters.selectedSkills.length
-            ? 'border-blue-300 focus-within:border-blue-400 focus-within:ring-blue-400'
-            : 'border-gray-200 focus-within:border-blue-400 focus-within:ring-blue-400'"
-          @click="skillInputEl?.focus()"
+      <button
+        class="btn"
+        :class="filters.bookmarkedOnly ? 'btn-on' : 'btn-ghost'"
+        @click="filters.bookmarkedOnly = !filters.bookmarkedOnly"
+      >
+        <Star class="h-3.5 w-3.5" :stroke-width="1.8" :fill="filters.bookmarkedOnly ? 'currentColor' : 'none'" />
+        感興趣
+      </button>
+
+      <div class="ml-auto flex items-center gap-2">
+        <button
+          class="btn"
+          :class="filters.advancedCount ? 'btn-on' : 'btn-ghost'"
+          @click="filters.panelOpen = !filters.panelOpen"
         >
-          <svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-          </svg>
-          <input
-            ref="skillInputEl"
-            v-model="skillQuery"
-            @focus="onSkillFocus"
-            @keydown="onSkillKeydown"
-            @blur="onSkillBlur"
-            placeholder="Skills…"
-            autocomplete="off"
-            class="bg-transparent outline-none text-sm w-20 min-w-0 placeholder-gray-400"
-          />
-          <span
-            v-if="filters.selectedSkills.length"
-            class="bg-blue-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-semibold flex-shrink-0 leading-none"
-          >{{ filters.selectedSkills.length }}</span>
-        </div>
+          <Filter class="h-3.5 w-3.5" :stroke-width="2" />
+          進階篩選
+          <span v-if="filters.advancedCount" class="chip border-transparent bg-brand text-white">
+            {{ filters.advancedCount }}
+          </span>
+          <ChevronDown class="h-3 w-3 transition-transform" :class="{ 'rotate-180': filters.panelOpen }" :stroke-width="2.5" />
+        </button>
 
-        <!-- Dropdown suggestions -->
-        <div
-          v-if="dropdownOpen && suggestions.length"
-          class="absolute top-full left-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-auto max-h-52 py-1"
-        >
-          <div
-            v-for="(tag, i) in suggestions"
-            :key="tag"
-            @mousedown.prevent="addSkill(tag)"
-            :class="[
-              'px-3 py-1.5 text-sm cursor-pointer',
-              i === activeIdx ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
-            ]"
-            v-html="highlight(tag)"
-          />
-          <div v-if="suggestions.length === 0" class="px-3 py-2 text-xs text-gray-400">No matches</div>
-        </div>
-      </div>
-
-      <!-- Toggle buttons -->
-      <div class="flex gap-1.5 flex-wrap">
-        <button
-          @click="filters.topUniversityOnly = !filters.topUniversityOnly"
-          :class="[
-            'px-3 py-1.5 text-xs font-semibold rounded-lg border transition',
-            filters.topUniversityOnly
-              ? 'bg-blue-600 text-white border-blue-600'
-              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-          ]"
-        >頂大</button>
-
-        <button
-          @click="filters.hardFilterPassedOnly = !filters.hardFilterPassedOnly"
-          :class="[
-            'px-3 py-1.5 text-xs font-semibold rounded-lg border transition',
-            filters.hardFilterPassedOnly
-              ? 'bg-green-600 text-white border-green-600'
-              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-          ]"
-        >Passed</button>
-
-        <button
-          @click="toggleDedupeStatus('unique')"
-          :class="[
-            'px-3 py-1.5 text-xs font-semibold rounded-lg border transition',
-            filters.dedupeStatus === 'unique'
-              ? 'bg-emerald-600 text-white border-emerald-600'
-              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-          ]"
-        >Unique</button>
-
-        <button
-          @click="toggleDedupeStatus('duplicate')"
-          :class="[
-            'px-3 py-1.5 text-xs font-semibold rounded-lg border transition',
-            filters.dedupeStatus === 'duplicate'
-              ? 'bg-rose-600 text-white border-rose-600'
-              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-          ]"
-        >Duplicate</button>
-
-        <button
-          @click="toggleDedupeStatus('review')"
-          :class="[
-            'px-3 py-1.5 text-xs font-semibold rounded-lg border transition',
-            filters.dedupeStatus === 'review'
-              ? 'bg-violet-600 text-white border-violet-600'
-              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-          ]"
-        >Review</button>
-
-        <button
-          @click="filters.bookmarkedOnly = !filters.bookmarkedOnly"
-          :class="[
-            'px-3 py-1.5 text-xs font-semibold rounded-lg border transition',
-            filters.bookmarkedOnly
-              ? 'bg-amber-500 text-white border-amber-500'
-              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-          ]"
-        >有興趣</button>
-
-        <button
-          v-if="hasActiveFilters"
-          @click="filters.clearAll()"
-          class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300 transition"
-        >Clear</button>
+        <button v-if="hasActiveFilters" class="btn btn-ghost" @click="filters.clearAll()">清除全部</button>
       </div>
     </div>
 
-    <!-- Active skill chips -->
-    <div v-if="filters.selectedSkills.length" class="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100">
+    <!-- While the panel is collapsed, every active advanced condition still
+         shows as a removable chip — a hidden filter must never silently
+         narrow the table with no indication on screen. -->
+    <div v-if="!filters.panelOpen && activeChips.length" class="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
       <span
-        v-for="skill in filters.selectedSkills"
-        :key="skill"
-        class="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5"
+        v-for="chip in activeChips"
+        :key="chip.key"
+        class="chip border-brand-line bg-brand-soft py-0.5 pl-2 pr-1 text-brand-ink"
       >
-        {{ skill }}
-        <button
-          @click="removeSkill(skill)"
-          class="text-blue-400 hover:text-blue-600 leading-none"
-        >×</button>
+        <span v-if="chip.label" class="opacity-60">{{ chip.label }}</span>
+        {{ chip.value }}
+        <button class="rounded px-0.5 leading-none opacity-60 transition-opacity hover:opacity-100" title="清除此條件" @click="chip.clear()">×</button>
       </span>
+    </div>
+
+    <!-- Advanced panel -->
+    <div v-if="filters.panelOpen" class="space-y-4 border-t border-line p-4">
+      <div class="grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+        <label class="flex items-center gap-2">
+          <span class="w-14 shrink-0 text-micro text-ink-muted">學歷</span>
+          <select v-model="filters.educationLevel" class="field min-w-0 flex-1" :class="{ 'field-active': isSet(filters.educationLevel) }">
+            <option :value="null">不限</option>
+            <option v-for="lvl in educationLevels" :key="lvl" :value="lvl">{{ lvl }}</option>
+          </select>
+        </label>
+
+        <label class="flex items-center gap-2">
+          <span class="w-14 shrink-0 text-micro text-ink-muted">年資</span>
+          <select v-model="filters.experienceRange" class="field min-w-0 flex-1" :class="{ 'field-active': isSet(filters.experienceRange) }">
+            <option :value="null">不限</option>
+            <option v-for="r in experienceRanges" :key="r" :value="r">{{ r }}</option>
+          </select>
+        </label>
+
+        <label class="flex items-center gap-2">
+          <span class="w-14 shrink-0 text-micro text-ink-muted">分數</span>
+          <select v-model="filters.scoreRange" class="field min-w-0 flex-1" :class="{ 'field-active': isSet(filters.scoreRange) }">
+            <option :value="null">不限</option>
+            <option v-for="r in scoreRanges" :key="r" :value="r">{{ scoreRangeLabel(r) }}</option>
+          </select>
+        </label>
+
+        <label class="flex items-center gap-2">
+          <span class="w-14 shrink-0 text-micro text-ink-muted">AI Tier</span>
+          <select v-model="filters.aiTier" class="field min-w-0 flex-1" :class="{ 'field-active': isSet(filters.aiTier) }">
+            <option :value="null">不限</option>
+            <option v-for="t in tierItems" :key="t.value" :value="t.value">{{ t.title }}</option>
+          </select>
+        </label>
+
+        <label class="flex items-center gap-2">
+          <span class="w-14 shrink-0 text-micro text-ink-muted">身分</span>
+          <select v-model="filters.candidateType" class="field min-w-0 flex-1" :class="{ 'field-active': isSet(filters.candidateType) }">
+            <option :value="null">不限</option>
+            <option value="實習">實習</option>
+            <option value="正職">工程師</option>
+          </select>
+        </label>
+
+        <label class="flex items-center gap-2">
+          <span class="w-14 shrink-0 text-micro text-ink-muted">年齡</span>
+          <select v-model="filters.ageRange" class="field min-w-0 flex-1" :class="{ 'field-active': isSet(filters.ageRange) }">
+            <option :value="null">不限</option>
+            <option v-for="r in ageRanges" :key="r" :value="r">{{ ageRangeLabel(r) }}</option>
+          </select>
+        </label>
+
+        <div class="flex items-center gap-2">
+          <span class="w-14 shrink-0 text-micro text-ink-muted">技能</span>
+          <div class="relative min-w-0 flex-1">
+            <div
+              class="field flex cursor-text items-center gap-1.5"
+              :class="{ 'field-active': filters.selectedSkills.length }"
+              @click="skillInputEl?.focus()"
+            >
+              <input
+                ref="skillInputEl"
+                v-model="skillQuery"
+                placeholder="搜尋技能…"
+                autocomplete="off"
+                class="min-w-0 flex-1 bg-transparent text-small text-ink outline-none placeholder:text-ink-faint"
+                @focus="onSkillFocus"
+                @keydown="onSkillKeydown"
+                @blur="onSkillBlur"
+              />
+              <span v-if="filters.selectedSkills.length" class="chip border-transparent bg-brand text-white">
+                {{ filters.selectedSkills.length }}
+              </span>
+            </div>
+
+            <div
+              v-if="dropdownOpen && suggestions.length"
+              class="absolute left-0 top-full z-50 mt-1 max-h-52 w-60 overflow-auto rounded-card border border-line-strong bg-surface-3 py-1 shadow-xl"
+            >
+              <div
+                v-for="(tag, i) in suggestions"
+                :key="tag"
+                class="cursor-pointer px-3 py-1.5 text-small"
+                :class="i === activeIdx ? 'bg-brand-soft text-brand-ink' : 'text-ink-muted hover:bg-surface-2 hover:text-ink'"
+                @mousedown.prevent="addSkill(tag)"
+                v-html="highlight(tag)"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dedupe is one mutually exclusive choice, so a segmented control
+           replaces the separate toggle buttons it used to be. -->
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="w-14 shrink-0 text-micro text-ink-muted">去重</span>
+        <div class="inline-flex overflow-hidden rounded-control border border-line">
+          <button
+            v-for="opt in dedupeOptions"
+            :key="opt.value ?? 'all'"
+            class="border-r border-line px-3 py-1.5 text-micro font-medium transition-colors last:border-r-0"
+            :class="filters.dedupeStatus === opt.value
+              ? 'bg-brand-soft text-brand-ink'
+              : 'bg-surface-2 text-ink-muted hover:text-ink'"
+            @click="filters.dedupeStatus = opt.value"
+          >{{ opt.label }}</button>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="w-14 shrink-0 text-micro text-ink-muted">其他</span>
+        <button
+          class="btn"
+          :class="filters.topUniversityOnly ? 'btn-on' : 'btn-ghost'"
+          @click="filters.topUniversityOnly = !filters.topUniversityOnly"
+        >頂尖大學</button>
+        <button
+          class="btn"
+          :class="filters.hardFilterPassedOnly ? 'btn-on' : 'btn-ghost'"
+          @click="filters.hardFilterPassedOnly = !filters.hardFilterPassedOnly"
+        >通過硬性條件</button>
+
+        <button v-if="filters.advancedCount" class="btn btn-ghost ml-auto" @click="filters.clearAdvanced()">
+          重設進階篩選
+        </button>
+      </div>
+
+      <div v-if="filters.selectedSkills.length" class="flex flex-wrap gap-1.5 border-t border-line pt-2.5">
+        <span
+          v-for="skill in filters.selectedSkills"
+          :key="skill"
+          class="chip border-brand-line bg-brand-soft py-0.5 pl-2 pr-1 text-brand-ink"
+        >
+          {{ skill }}
+          <button class="rounded px-0.5 leading-none opacity-60 transition-opacity hover:opacity-100" title="移除" @click="removeSkill(skill)">×</button>
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -209,6 +210,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useFilterStore } from '../stores/filters'
+import { ChevronDown, Filter, Search, Star } from 'lucide-vue-next'
 
 const filters = useFilterStore()
 
@@ -218,14 +220,101 @@ const props = defineProps({
   experienceRanges: { type: Array, default: () => ['0-2年', '3-5年', '5-10年', '10年+'] },
   scoreRanges: { type: Array, default: () => ['80+', '60-79', '40-59', '<40', 'No Score'] },
   importBatches: { type: Array, default: () => [] },
+  // [{value, label}] from /api/filters, named by the active job's domain
+  // profile. Empty falls back to the AI ladder below.
+  aiTiers: { type: Array, default: () => [] },
 })
 
-const tierItems = [
+// Local, not a prop: unlike the score/experience ranges the API supplies, age
+// bands are derived client-side from birth_year. Split around the pool's shape
+// — it is overwhelmingly 22-30, so one wide "20-30" bucket would sort nobody.
+const ageRanges = ['~24', '25-29', '30-34', '35-39', '40+']
+
+// Tier names belong to the active job's scoring standard, not to this
+// component: a sales role calls level 2 「獨立業務」, not "RAG Architect".
+// The API supplies them; these four are the fallback for a job with no domain
+// profile, which is exactly when the pipeline runs the AI scorers.
+const FALLBACK_TIERS = [
+  { title: 'T0 - Non-AI', value: 0 },
   { title: 'T1 - Wrapper', value: 1 },
   { title: 'T2 - RAG Architect', value: 2 },
-  { title: 'T3 - Model Tuner', value: 3 },
-  { title: 'T4 - Inference Ops', value: 4 },
+  { title: 'T3 - AI Expert', value: 3 },
 ]
+
+const tierItems = computed(() =>
+  props.aiTiers.length
+    ? props.aiTiers.map((t) => ({ title: `T${t.value} - ${t.label}`, value: t.value }))
+    : FALLBACK_TIERS
+)
+
+const dedupeOptions = [
+  { label: '全部', value: null },
+  { label: '新履歷', value: 'unique' },
+  { label: '重複', value: 'duplicate' },
+  { label: '待確認', value: 'review' },
+]
+
+// Tier 0 is a legitimate selection, so emptiness is checked explicitly rather
+// than by falsiness — `filters.aiTier === 0` must still read as "set".
+function isSet(value) {
+  return value != null && value !== ''
+}
+
+// The API returns this range key in English; the UI is Chinese.
+function scoreRangeLabel(range) {
+  return range === 'No Score' ? '尚未評分' : range
+}
+
+function ageRangeLabel(range) {
+  if (range === '~24') return '24 歲以下'
+  if (range === '40+') return '40 歲以上'
+  return `${range} 歲`
+}
+
+// --- Chips summarising the collapsed panel's active filters ---
+const activeChips = computed(() => {
+  const chips = []
+  const add = (key, label, value, clear) => chips.push({ key, label, value, clear })
+
+  if (filters.educationLevel) {
+    add('edu', '學歷', filters.educationLevel, () => { filters.educationLevel = null })
+  }
+  if (filters.experienceRange) {
+    add('exp', '經驗', filters.experienceRange, () => { filters.experienceRange = null })
+  }
+  if (filters.scoreRange) {
+    add('score', '分數', scoreRangeLabel(filters.scoreRange), () => { filters.scoreRange = null })
+  }
+  if (filters.aiTier != null && filters.aiTier !== '') {
+    const tier = tierItems.value.find((t) => t.value === filters.aiTier)
+    add('tier', 'AI', tier ? tier.title : filters.aiTier, () => { filters.aiTier = null })
+  }
+  if (filters.candidateType) {
+    add(
+      'type',
+      '身分',
+      filters.candidateType === '正職' ? '工程師' : filters.candidateType,
+      () => { filters.candidateType = null },
+    )
+  }
+  if (filters.ageRange) {
+    add('age', '年齡', ageRangeLabel(filters.ageRange), () => { filters.ageRange = null })
+  }
+  if (filters.dedupeStatus) {
+    const opt = dedupeOptions.find((o) => o.value === filters.dedupeStatus)
+    add('dedupe', '去重', opt ? opt.label : filters.dedupeStatus, () => { filters.dedupeStatus = null })
+  }
+  if (filters.topUniversityOnly) {
+    add('top', '', '頂尖大學', () => { filters.topUniversityOnly = false })
+  }
+  if (filters.hardFilterPassedOnly) {
+    add('hard', '', '通過硬性條件', () => { filters.hardFilterPassedOnly = false })
+  }
+  for (const skill of filters.selectedSkills) {
+    add(`skill:${skill}`, '技能', skill, () => removeSkill(skill))
+  }
+  return chips
+})
 
 // --- Skill autocomplete ---
 const skillQuery = ref('')
@@ -275,10 +364,6 @@ function removeSkill(tag) {
   filters.selectedSkills = filters.selectedSkills.filter((s) => s !== tag)
 }
 
-function toggleDedupeStatus(status) {
-  filters.dedupeStatus = filters.dedupeStatus === status ? null : status
-}
-
 function onSkillFocus() {
   dropdownOpen.value = true
 }
@@ -320,17 +405,11 @@ function onSkillKeydown(e) {
 
 // --- Active filter indicator ---
 const hasActiveFilters = computed(() =>
-  filters.searchName ||
-  filters.educationLevel ||
-  filters.selectedSkills.length > 0 ||
-  filters.experienceRange ||
-  filters.scoreRange ||
-  filters.aiTier ||
-  filters.candidateType ||
-  filters.dedupeStatus ||
-  filters.importBatchId ||
-  filters.topUniversityOnly ||
-  filters.hardFilterPassedOnly ||
-  filters.bookmarkedOnly
+  Boolean(
+    filters.searchName ||
+    filters.bookmarkedOnly ||
+    filters.importBatchId ||
+    filters.advancedCount
+  )
 )
 </script>

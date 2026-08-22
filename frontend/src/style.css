@@ -1,106 +1,438 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* `out/` and `dist/` hold stale build bundles. Tailwind's automatic content
+   scan reached into them and harvested class names from that obsolete markup,
+   emitting utilities for a palette this app no longer defines. */
+@source not "../out";
+@source not "../dist";
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Design tokens
+
+   The previous revision built its dark theme by *inverting Tailwind's own
+   palette*: the white token was redefined to a near-black, and the neutral
+   ramp was flipped so its darkest step rendered nearly white. Every component
+   then had to be written in light-theme idiom and read as its opposite, and
+   the white text utility needed an !important escape hatch to stay white.
+   (Class names are spelled out in prose here on purpose — Tailwind scans this
+   file, and literal utility names in a comment get compiled into the bundle.)
+
+   That is replaced here by a semantic scale. Components name the *role*
+   (`surface`, `ink`, `border`) rather than a raw colour, so a component reads
+   the way it renders and a future light theme is a token swap, not a rewrite.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Palette
+
+   Tailwind 4 resolves `@theme` values once, at build time, so a media query
+   cannot override them directly. Each colour token therefore points at an
+   indirection variable (`--c-*`) whose value IS swappable at runtime. Light
+   values live on `:root`; the dark set overrides them under
+   `prefers-color-scheme: dark`. Components keep naming the role, so all ~400
+   existing utility classes work in both themes with no markup change.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 :root {
-  --color-accent: #2563EB;
-  --radius: 8px;
+  /* ── Surfaces: base → raised. In light mode elevation reads as *whiter*
+        against a faintly tinted canvas, the inverse of the dark ramp. ─────── */
+  --c-canvas:      #F7F8FA;  /* app background, behind everything          */
+  --c-surface:     #FFFFFF;  /* cards, panels, table body                  */
+  --c-surface-2:   #F2F4F7;  /* table header, inset wells, hover rests     */
+  --c-surface-3:   #FFFFFF;  /* raised: menus, popovers, modals            */
 
-  /* ── Dark theme: surface scale ────────────────────────────────────────────── */
-  /* bg-white  → main card / panel surface                                       */
-  /* gray-*    → inverted so higher numbers = lighter text on dark backgrounds  */
-  --color-white:    #161B22;
-  --color-gray-50:  #21262D;
-  --color-gray-100: #30363D;
-  --color-gray-200: #3D444D;
-  --color-gray-300: #565F6B;
-  --color-gray-400: #6E7781;
-  --color-gray-500: #8B949E;
-  --color-gray-600: #B1BAC4;
-  --color-gray-700: #C9D1D9;
-  --color-gray-800: #E6EDF3;
-  --color-gray-900: #F0F6FC;
+  /* ── Borders: hairline → emphasis ──────────────────────────────────────── */
+  --c-line:        #E4E7EC;  /* default separator, low contrast by design  */
+  --c-line-strong: #CBD2DC;  /* card outline, hover borders                */
 
-  /* ── Tinted chip / badge colours ──────────────────────────────────────────── */
-  /* *-50 / *-100 become dark tinted backgrounds; *-700 becomes bright text      */
-  --color-blue-50:    #0d1f32;
-  --color-blue-100:   #102a4e;
-  --color-blue-700:   #58A6FF;
+  /* ── Ink: text hierarchy. Three levels only — more invites mush.
+        Each step is checked for WCAG AA on --c-surface.                    */
+  --c-ink:         #161D2B;  /* primary   ~15.9:1 on white                 */
+  --c-ink-muted:   #5A6478;  /* secondary  ~6.4:1 on white                 */
+  --c-ink-faint:   #667080;  /* tertiary   ~5.0:1 on white, 4.5:1 on wells */
 
-  --color-green-50:   #0a1f12;
-  --color-green-100:  #0f2318;
-  --color-green-700:  #56D364;
+  /* ── Brand ─────────────────────────────────────────────────────────────── */
+  --c-brand:       #2563EB;  /* matches the favicon / theme-color meta     */
+  --c-brand-hover: #1D4FD7;
+  --c-brand-soft:  #EFF4FF;  /* tinted fill behind brand text              */
+  --c-brand-line:  #C3D6FF;
+  --c-brand-ink:   #1B4DC1;  /* brand text on a light tint, AA on white    */
 
-  --color-amber-50:   #1f1500;
-  --color-amber-100:  #2d1f00;
-  --color-amber-700:  #E3B341;
+  /* ── Semantic accents ──────────────────────────────────────────────────────
+     Each is a triple: soft (fill) / line (border) / ink (text). The `ink`
+     step is the one that carries text, so it is darkened here rather than
+     reusing the dark theme's bright fills, which fail contrast on white.   */
+  --c-good-soft:   #ECFDF3;
+  --c-good-line:   #ABEFC6;
+  --c-good-ink:    #067647;
 
-  --color-red-50:     #2d1010;
-  --color-red-100:    #3d1515;
-  --color-red-600:    #F85149;
-  --color-red-700:    #FF7B72;
+  --c-warn-soft:   #FFFAEB;
+  --c-warn-line:   #FEDF89;
+  --c-warn-ink:    #B54708;
 
-  --color-indigo-50:  #0e1228;
-  --color-indigo-100: #141930;
-  --color-indigo-700: #9391F4;
+  --c-bad-soft:    #FEF3F2;
+  --c-bad-line:    #FECDCA;
+  --c-bad-ink:     #B42318;
 
-  --color-purple-50:  #1a0d28;
-  --color-purple-100: #230f35;
-  --color-purple-700: #C084FC;
+  --c-info-soft:   #EFF8FF;
+  --c-info-line:   #B2DDFF;
+  --c-info-ink:    #175CD3;
 
-  --color-sky-50:     #0a1d2e;
-  --color-sky-100:    #0d2540;
-  --color-sky-700:    #38BDF8;
+  --c-expert-soft: #F4F3FF;
+  --c-expert-line: #D9D6FE;
+  --c-expert-ink:  #5925DC;
+
+  --c-neutral-soft: #F2F4F7;
+  --c-neutral-line: #E4E7EC;
+  --c-neutral-ink:  #475467;
+
+  --c-scroll-thumb-hover: #A9B2C0;
 }
 
-/* text-white is used on colored buttons / badges — always keep it white */
-.text-white {
-  color: #ffffff !important;
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-canvas:      #0B0E14;
+    --c-surface:     #12161F;
+    --c-surface-2:   #171C27;
+    --c-surface-3:   #1E2532;
+
+    --c-line:        #222A38;
+    --c-line-strong: #303A4D;
+
+    --c-ink:         #E9EDF5;
+    --c-ink-muted:   #98A2B8;
+    --c-ink-faint:   #8792A8;
+
+    --c-brand:       #3B82F6;
+    --c-brand-hover: #2E6FE0;
+    --c-brand-soft:  #14213A;
+    --c-brand-line:  #23417A;
+    --c-brand-ink:   #7FB0FF;
+
+    --c-good-soft:   #0C2118;
+    --c-good-line:   #1B4432;
+    --c-good-ink:    #4ADE80;
+
+    --c-warn-soft:   #241A05;
+    --c-warn-line:   #4A360C;
+    --c-warn-ink:    #FBBF24;
+
+    --c-bad-soft:    #2A1215;
+    --c-bad-line:    #522028;
+    --c-bad-ink:     #F87171;
+
+    --c-info-soft:   #101F33;
+    --c-info-line:   #1D3A5C;
+    --c-info-ink:    #60A5FA;
+
+    --c-expert-soft: #1C1233;
+    --c-expert-line: #382258;
+    --c-expert-ink:  #C084FC;
+
+    --c-neutral-soft: #1A202C;
+    --c-neutral-line: #2A3346;
+    --c-neutral-ink:  #A9B4CA;
+
+    --c-scroll-thumb-hover: #46536B;
+  }
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
+@theme {
+  /* Every colour is an alias onto the swappable `--c-*` set above. */
+  --color-canvas:      var(--c-canvas);
+  --color-surface:     var(--c-surface);
+  --color-surface-2:   var(--c-surface-2);
+  --color-surface-3:   var(--c-surface-3);
+
+  --color-line:        var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+
+  --color-ink:         var(--c-ink);
+  --color-ink-muted:   var(--c-ink-muted);
+  --color-ink-faint:   var(--c-ink-faint);
+
+  --color-brand:       var(--c-brand);
+  --color-brand-hover: var(--c-brand-hover);
+  --color-brand-soft:  var(--c-brand-soft);
+  --color-brand-line:  var(--c-brand-line);
+  --color-brand-ink:   var(--c-brand-ink);
+
+  --color-good-soft:   var(--c-good-soft);
+  --color-good-line:   var(--c-good-line);
+  --color-good-ink:    var(--c-good-ink);
+
+  --color-warn-soft:   var(--c-warn-soft);
+  --color-warn-line:   var(--c-warn-line);
+  --color-warn-ink:    var(--c-warn-ink);
+
+  --color-bad-soft:    var(--c-bad-soft);
+  --color-bad-line:    var(--c-bad-line);
+  --color-bad-ink:     var(--c-bad-ink);
+
+  --color-info-soft:   var(--c-info-soft);
+  --color-info-line:   var(--c-info-line);
+  --color-info-ink:    var(--c-info-ink);
+
+  --color-expert-soft: var(--c-expert-soft);
+  --color-expert-line: var(--c-expert-line);
+  --color-expert-ink:  var(--c-expert-ink);
+
+  --color-neutral-soft: var(--c-neutral-soft);
+  --color-neutral-line: var(--c-neutral-line);
+  --color-neutral-ink:  var(--c-neutral-ink);
+
+  /* ── Radii ─────────────────────────────────────────────────────────────── */
+  --radius-control: 6px;   /* buttons, inputs, selects                         */
+  --radius-card:    10px;  /* cards, panels                                    */
+
+  /* ── Type scale ──────────────────────────────────────────────────────────
+     Deliberately narrow. The old UI mixed text-xs through text-4xl with no
+     system, which is a large part of why it read as unfinished.               */
+  --text-micro:     0.875rem;   /* 14px — badges, table column headers         */
+  --text-micro--line-height: 1.25rem;
+  --text-small:     1rem;       /* 16px — table body, secondary UI             */
+  --text-small--line-height: 1.5rem;
+  --text-base:      1.0625rem;  /* 17px — default body                         */
+  --text-base--line-height: 1.625rem;
+  --text-title:     1.375rem;   /* 22px — section and page titles              */
+  --text-title--line-height: 1.875rem;
+  --text-display:   2.25rem;    /* 36px — primary names and scores             */
+  --text-display--line-height: 2.5rem;
+
+  --font-sans: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei',
+               -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Manrope', 'Noto Sans TC', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
 
-html {
-  font-size: 16px;
-}
+*, *::before, *::after { box-sizing: border-box; }
+
+html { font-size: 16px; }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #0D1117;
-  color: #C9D1D9;
+  font-family: var(--font-sans);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-size: var(--text-base);
   margin: 0;
-  padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Latin numerals stay tabular so score columns align down the page. */
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
 }
 
-/* Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+h1, h2, h3 {
+  font-family: var(--font-display);
+  text-wrap: balance;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+
+/* ── Scrollbars ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #30363D;
+  background: var(--color-line-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--c-scroll-thumb-hover); background-clip: content-box; }
+
+/* ── Focus: one visible ring everywhere, never removed ────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #565F6B;
+
+/* ── Reduced motion ───────────────────────────────────────────────────────────
+   Vestibular triggers are movement and easing, not the existence of a state
+   change. So transitions collapse to instant rather than being left to run at
+   a length no one asked for.
+
+   The two spinners are deliberately *not* frozen. `animate-spin` marks work
+   that is still running — parsing a PDF, scoring 3179 candidates — and a
+   motionless spinner is indistinguishable from a hung request, which trades an
+   accessibility win for a correctness loss. They are slowed to a rate that
+   still reads as "alive" without strobing. `animate-pulse` marks skeletons,
+   which say the same thing standing still, so those do stop.               */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-spin {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  /* The press effect is a 1px nudge with no travel; it is feedback for a tap
+     the user just made, so it survives. */
+  .btn:not(:disabled):active { transform: translateY(1px) scale(.99); }
 }
 
-/* Focus ring */
-*:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+a { color: var(--color-brand-ink); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Native selects render their popup with the OS palette; force the option list
+   to the dark surface so it doesn't flash white on Linux/Windows. */
+select option { background: var(--color-surface-3); color: var(--color-ink); }
+
+/* ── Reusable primitives ──────────────────────────────────────────────────────
+   Extracted because these exact class strings were repeated across every view.
+   Defined once here, they keep controls identical between screens.            */
+@layer components {
+  .field {
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    color: var(--color-ink);
+    border-radius: var(--radius-control);
+    font-size: var(--text-small);
+    min-height: 2.625rem;
+    padding: 0.5rem 0.75rem;
+    outline: none;
+    transition: border-color .15s, background-color .15s;
+  }
+  .field::placeholder { color: var(--color-ink-faint); }
+  .field:hover { border-color: var(--color-line-strong); }
+  .field:focus, .field:focus-within {
+    border-color: var(--color-brand);
+    background: var(--color-surface);
+  }
+  /* A file input renders its own button with the OS palette, which flashes a
+     light-grey control on the dark surface. Styled here so `.field` covers
+     file inputs too, rather than each view hand-rolling it. */
+  .field[type="file"] { padding: 0.25rem 0.375rem; }
+  .field::file-selector-button {
+    background: var(--color-surface-3);
+    border: 1px solid var(--color-line);
+    color: var(--color-ink-muted);
+    border-radius: 4px;
+    font: inherit;
+    font-size: var(--text-micro);
+    font-weight: 500;
+    padding: 0.1875rem 0.5rem;
+    margin-right: 0.625rem;
+    cursor: pointer;
+    transition: border-color .15s, color .15s;
+  }
+  .field::file-selector-button:hover {
+    border-color: var(--color-line-strong);
+    color: var(--color-ink);
+  }
+
+  /* A filter that is actively narrowing results must look different from one
+     sitting at its default, or the table silently lies about its contents. */
+  .field-active {
+    border-color: var(--color-brand-line);
+    background: var(--color-brand-soft);
+    color: var(--color-brand-ink);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    border-radius: var(--radius-control);
+    font-size: var(--text-small);
+    font-weight: 500;
+    min-height: 2.625rem;
+    padding: 0.5rem 0.875rem;
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color .2s, border-color .2s, color .2s, transform .2s;
+  }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn:not(:disabled):active { transform: translateY(1px) scale(.99); }
+
+  .btn-primary { background: var(--color-brand); color: #fff; }
+  .btn-primary:not(:disabled):hover { background: var(--color-brand-hover); }
+
+  .btn-ghost {
+    background: var(--color-surface-2);
+    border-color: var(--color-line);
+    color: var(--color-ink-muted);
+  }
+  .btn-ghost:not(:disabled):hover {
+    border-color: var(--color-line-strong);
+    color: var(--color-ink);
+  }
+
+  .btn-on { background: var(--color-brand-soft); border-color: var(--color-brand-line); color: var(--color-brand-ink); }
+
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  /* One badge shape for the whole app. Colour comes from a semantic triple. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 4px;
+    font-size: var(--text-micro);
+    line-height: 1.125rem;
+    font-weight: 500;
+    padding: 0.1875rem 0.5rem;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
 }
 
-a {
-  color: var(--color-accent);
-  text-decoration: none;
+/* Status-picker swatches. These let a user colour a custom interview status,
+   so the palette is intentionally wider than the semantic tokens. The
+   soft/text pairs are theme-dependent: a tint tuned for a dark surface reads
+   as a dark block on white, so those follow the same `--c-*` swap as the
+   semantic tokens. The saturated 400/500 steps are dots and bar fills that
+   sit on their own, and work unchanged in both themes. */
+:root {
+  --c-yellow-soft: #FEF7C3;  --c-yellow-text: #854A0E;
+  --c-orange-soft: #FFEAD5;  --c-orange-text: #B93815;
+  --c-pink-soft:   #FCE7F6;  --c-pink-text:   #C11574;
+  --c-blue-chip:   #D1E0FF;
 }
-a:hover {
-  text-decoration: underline;
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-yellow-soft: #2A2205;  --c-yellow-text: #FDE047;
+    --c-orange-soft: #2B1908;  --c-orange-text: #FDBA74;
+    --c-pink-soft:   #2B1020;  --c-pink-text:   #F9A8D4;
+    --c-blue-chip:   #1D3A5C;
+  }
+}
+
+@theme {
+  --color-yellow-100: var(--c-yellow-soft);
+  --color-yellow-700: var(--c-yellow-text);
+  --color-orange-100: var(--c-orange-soft);
+  --color-orange-700: var(--c-orange-text);
+  --color-pink-100:   var(--c-pink-soft);
+  --color-pink-700:   var(--c-pink-text);
+  --color-blue-200:   var(--c-blue-chip);
+
+  /* Saturated steps: swatch dots and progress-bar fills, theme-independent. */
+  --color-yellow-400: #EAB308;
+  --color-orange-500: #F97316;
+  --color-pink-500:   #EC4899;
+  --color-blue-400:   #3B82F6;
+  --color-blue-500:   #2563EB;
+  --color-purple-400: #A855F7;
+  --color-purple-500: #9333EA;
+  --color-indigo-500: #6366F1;
+  --color-green-500:  #22C55E;
+  --color-emerald-400:#10B981;
+  --color-emerald-500:#059669;
+  --color-teal-500:   #14B8A6;
+  --color-amber-400:  #F59E0B;
+  --color-red-300:    #F97066;
+  --color-red-500:    #EF4444;
+  --color-slate-400:  #667085;
 }

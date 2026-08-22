@@ -1,61 +1,58 @@
 <template>
-  <div class="flex flex-col h-full overflow-hidden">
+  <div class="flex h-full flex-col overflow-hidden">
     <!-- Toolbar -->
-    <div class="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-100 shrink-0">
-      <div class="flex items-center gap-2 text-sm text-gray-500 min-w-0">
-        <span class="font-semibold text-gray-900 whitespace-nowrap">{{ props.title }}</span>
-        <span class="text-gray-300">/</span>
-        <template v-if="candidates.length">
-          <span class="font-semibold text-gray-700">{{ tableRef?.filteredCount ?? candidates.length }}</span>
-          <span v-if="tableRef?.filteredCount != null && tableRef.filteredCount !== candidates.length" class="text-gray-400">of {{ candidates.length }}</span>
-          <span>candidates</span>
-        </template>
+    <div class="flex shrink-0 items-center justify-between gap-5 border-b border-line bg-surface px-6 py-3.5">
+      <div class="flex min-w-0 items-baseline gap-2.5">
+        <h1 class="text-title font-semibold tracking-tight text-ink">人才庫</h1>
+        <!-- The filtered/total split is stated in words so a narrowed table is
+             never mistaken for an empty database. -->
+        <span v-if="candidates.length" class="truncate text-small text-ink-muted">
+          <template v-if="visibleCount !== candidates.length">
+            篩選出 <span class="font-semibold text-ink">{{ visibleCount }}</span> 位 ／ 共 {{ candidates.length }} 位
+          </template>
+          <template v-else>
+            共 <span class="font-semibold text-ink">{{ candidates.length }}</span> 位人選
+          </template>
+        </span>
       </div>
-      <div v-if="!props.scope" class="flex items-center gap-2">
-        <button
-          @click="batchMatchAll"
-          :disabled="batchRunning"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-gray-200 rounded-lg text-gray-600 hover:border-gray-300 hover:text-gray-800 disabled:opacity-50 transition"
-        >
-          <svg class="w-3.5 h-3.5" :class="{ 'animate-spin': batchRunning }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          {{ batchRunning ? 'Running…' : 'Batch Match' }}
+
+      <div class="flex shrink-0 items-center gap-2">
+        <button class="btn btn-ghost" :disabled="batchRunning" @click="batchMatchAll">
+          <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': batchRunning }" :stroke-width="2" />
+          {{ batchRunning ? '評分中…' : '全部重新評分' }}
         </button>
-        <button
-          @click="showUpload = true"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-          </svg>
-          Upload PDF
+        <button class="btn btn-primary" @click="showUpload = true">
+          <Upload class="h-3.5 w-3.5" :stroke-width="2" />
+          上傳履歷
         </button>
       </div>
     </div>
 
-    <!-- Main content -->
-    <div class="flex-1 overflow-auto p-5">
-      <!-- Backend connection error -->
-      <div v-if="loadError" class="flex flex-col items-center justify-center py-20 text-center">
-        <div class="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-4">
-          <svg class="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-          </svg>
+    <div class="min-h-0 flex-1 overflow-auto p-5 lg:p-6">
+      <!-- Backend unreachable -->
+      <div v-if="loadError" class="mx-auto mt-16 max-w-md text-center">
+        <div class="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-bad-line bg-bad-soft">
+          <AlertTriangle class="h-5 w-5 text-bad-ink" :stroke-width="2" />
         </div>
-        <h3 class="text-sm font-semibold text-gray-700 mb-1">Cannot reach backend</h3>
-        <p class="text-xs text-gray-400 mb-1">Make sure the FastAPI server is running:</p>
-        <code class="text-xs bg-gray-100 text-gray-600 rounded px-2 py-1 mb-5 font-mono">uv run python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000</code>
-        <button
-          @click="loadData"
-          :disabled="loadingData"
-          class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
-        >
-          <svg class="w-4 h-4" :class="{ 'animate-spin': loadingData }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          Retry
+        <h2 class="text-title font-semibold text-ink">無法連線到後端服務</h2>
+        <p class="mt-1.5 text-small text-ink-muted">請確認 FastAPI 伺服器已啟動：</p>
+        <code class="mt-3 block overflow-x-auto rounded-control border border-line bg-surface-2 px-3 py-2 text-left font-mono text-micro text-ink-muted">uv run python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000</code>
+        <button class="btn btn-primary mx-auto mt-5" :disabled="loadingData" @click="loadData">
+          <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': loadingData }" :stroke-width="2" />
+          {{ loadingData ? '連線中…' : '重新連線' }}
         </button>
+      </div>
+
+      <!-- First load: a skeleton, not a blank page. -->
+      <div v-else-if="loadingData && !candidates.length" class="space-y-2">
+        <div class="h-11 animate-pulse rounded-card bg-surface" />
+        <div class="card overflow-hidden">
+          <div v-for="n in 8" :key="n" class="flex items-center gap-3 border-b border-line/60 px-4 py-3 last:border-0">
+            <div class="h-7 w-7 shrink-0 animate-pulse rounded-full bg-surface-2" />
+            <div class="h-3 animate-pulse rounded bg-surface-2" :style="{ width: `${18 + (n % 4) * 6}%` }" />
+            <div class="ml-auto h-3 w-12 animate-pulse rounded bg-surface-2" />
+          </div>
+        </div>
       </div>
 
       <template v-else>
@@ -64,59 +61,57 @@
           :skill-tags="filterOptions.skill_tags"
           :experience-ranges="filterOptions.experience_ranges"
           :score-ranges="filterOptions.score_ranges"
+          :ai-tiers="filterOptions.ai_tiers || []"
           :import-batches="importBatches"
         />
         <CandidateTable ref="tableRef" :candidates="candidates" />
       </template>
     </div>
 
-    <!-- Upload Modal -->
-    <div
-      v-if="showUpload"
-      class="fixed inset-0 z-50 flex items-center justify-center"
-    >
-      <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="showUpload = false" />
-      <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
-        <div class="flex items-center justify-between mb-5">
-          <h2 class="text-base font-semibold text-gray-900">Upload Resume PDF</h2>
-          <button @click="showUpload = false" class="text-gray-400 hover:text-gray-600 transition">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+    <!-- Upload -->
+    <div v-if="showUpload" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closeUpload" />
+      <div class="card relative w-full max-w-md bg-surface-3 p-5 shadow-2xl">
+        <div class="mb-4 flex items-start justify-between">
+          <div>
+            <h2 class="text-title font-semibold text-ink">上傳履歷 PDF</h2>
+            <p class="mt-0.5 text-small text-ink-muted">上傳後系統會自動解析並評分</p>
+          </div>
+          <button class="rounded p-1 text-ink-faint transition-colors hover:text-ink" title="關閉" @click="closeUpload">
+            <X class="h-4 w-4" :stroke-width="2" />
           </button>
         </div>
 
-        <!-- Drop zone -->
         <label
-          class="block border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all group"
-          :class="{ 'border-blue-400 bg-blue-50': uploadFile }"
+          class="block cursor-pointer rounded-card border border-dashed p-7 text-center transition-colors"
+          :class="uploadFile || dragging
+            ? 'border-brand-line bg-brand-soft'
+            : 'border-line-strong bg-surface-2 hover:border-brand hover:bg-surface'"
+          @dragover.prevent="dragging = true"
+          @dragleave.prevent="dragging = false"
+          @drop.prevent="onDrop"
         >
-          <input type="file" accept=".pdf" class="hidden" @change="onFileChange" />
-          <svg class="w-10 h-10 mx-auto text-gray-300 group-hover:text-blue-400 transition mb-3" :class="{ 'text-blue-500': uploadFile }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-          </svg>
-          <div v-if="uploadFile" class="text-sm font-medium text-blue-700">{{ uploadFile.name }}</div>
+          <input type="file" accept=".pdf,application/pdf" class="hidden" @change="onFileChange" />
+          <File class="mx-auto mb-2.5 h-8 w-8" :class="uploadFile || dragging ? 'text-brand-ink' : 'text-ink-faint'" :stroke-width="1.5" />
+          <div v-if="uploadFile">
+            <div class="truncate text-small font-medium text-brand-ink">{{ uploadFile.name }}</div>
+            <div class="mt-0.5 text-micro text-ink-faint">{{ formatBytes(uploadFile.size) }} ・ 點擊可重新選擇</div>
+          </div>
           <div v-else>
-            <div class="text-sm font-medium text-gray-600">Choose PDF or drag & drop</div>
-            <div class="text-xs text-gray-400 mt-1">PDF files only</div>
+            <div class="text-small font-medium text-ink">點擊選擇檔案，或拖曳至此</div>
+            <div class="mt-0.5 text-micro text-ink-faint">僅支援 PDF 格式</div>
           </div>
         </label>
 
-        <div v-if="uploadError" class="mt-3 text-xs text-red-600 text-center">{{ uploadError }}</div>
+        <p v-if="uploadError" class="mt-2.5 rounded-control border border-bad-line bg-bad-soft px-3 py-2 text-small text-bad-ink">
+          {{ uploadError }}
+        </p>
 
-        <div class="flex justify-end gap-2 mt-5">
-          <button @click="showUpload = false" class="px-4 py-2 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-100 transition">
-            Cancel
-          </button>
-          <button
-            :disabled="!uploadFile || uploading"
-            @click="doUpload"
-            class="px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
-          >
-            <svg v-if="uploading" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {{ uploading ? 'Uploading…' : 'Upload' }}
+        <div class="mt-4 flex justify-end gap-2">
+          <button class="btn btn-ghost" :disabled="uploading" @click="closeUpload">取消</button>
+          <button class="btn btn-primary" :disabled="!uploadFile || uploading" @click="doUpload">
+            <RefreshCw class="h-3.5 w-3.5 animate-spin" :stroke-width="2" v-if="uploading" />
+            {{ uploading ? '解析中…' : '上傳並解析' }}
           </button>
         </div>
       </div>
@@ -129,33 +124,30 @@ export default { name: 'ListView' }
 </script>
 
 <script setup>
-import { ref, onMounted, onActivated, nextTick } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { ref, computed, onMounted, onActivated, nextTick } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { fetchCandidates, fetchFilters, fetchImportBatches, uploadPdf, batchMatch } from '../api'
 import { useBookmarkStore } from '../stores/bookmarks'
 import { useInvitationStore } from '../stores/invitations'
 import { useFilterStore } from '../stores/filters'
 import FilterPanel from '../components/FilterPanel.vue'
 import CandidateTable from '../components/CandidateTable.vue'
+import { AlertTriangle, File, RefreshCw, Upload, X } from 'lucide-vue-next'
 
 const bookmarks = useBookmarkStore()
 const invitations = useInvitationStore()
 const filterStore = useFilterStore()
 
-const props = defineProps({
-  scope: { type: String, default: null },
-  title: { type: String, default: 'Candidates' },
-})
-
 const tableRef = ref(null)
 const candidates = ref([])
 const importBatches = ref([])
-const filterOptions = ref({ education_levels: [], skill_tags: [], experience_ranges: [], score_ranges: [] })
+const filterOptions = ref({ education_levels: [], skill_tags: [], experience_ranges: [], score_ranges: [], ai_tiers: [] })
 const showUpload = ref(false)
 const uploadFile = ref(null)
 const uploading = ref(false)
 const uploadError = ref('')
 const batchRunning = ref(false)
+const dragging = ref(false)
 const loaded = ref(false)
 const loadError = ref(false)
 const loadingData = ref(false)
@@ -165,8 +157,8 @@ async function loadData() {
   loadingData.value = true
   try {
     const [cands, filters, batches] = await Promise.all([
-      fetchCandidates({ scope: props.scope }),
-      fetchFilters({ scope: props.scope }),
+      fetchCandidates(),
+      fetchFilters(),
       fetchImportBatches(),
     ])
     candidates.value = cands
@@ -187,9 +179,38 @@ async function loadData() {
   }
 }
 
-function onFileChange(e) {
-  uploadFile.value = e.target.files?.[0] || null
+const visibleCount = computed(() => tableRef.value?.filteredCount ?? candidates.value.length)
+
+function setFile(file) {
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    uploadError.value = '只能上傳 PDF 檔案'
+    return
+  }
+  uploadFile.value = file
   uploadError.value = ''
+}
+
+function onFileChange(e) {
+  setFile(e.target.files?.[0])
+}
+
+function onDrop(e) {
+  dragging.value = false
+  setFile(e.dataTransfer?.files?.[0])
+}
+
+function closeUpload() {
+  if (uploading.value) return
+  showUpload.value = false
+  uploadFile.value = null
+  uploadError.value = ''
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return ''
+  const mb = bytes / 1024 / 1024
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`
 }
 
 async function doUpload() {
@@ -202,7 +223,11 @@ async function doUpload() {
     uploadFile.value = null
     await loadData()
   } catch (err) {
-    uploadError.value = 'Upload failed. Please try again.'
+    // Surface the server's own reason (413 size, 415 not-a-PDF, 429 rate
+    // limit) instead of a fixed "check the format" line: the format is usually
+    // fine, and the generic text sent the operator looking in the wrong place.
+    uploadError.value =
+      err?.response?.data?.detail || err?.message || '上傳失敗，請稍後再試一次'
     console.error('Upload failed:', err)
   } finally {
     uploading.value = false
@@ -227,7 +252,25 @@ onBeforeRouteLeave(() => {
   savedScrollTop = tableRef.value?.getScrollTop() ?? 0
 })
 
+// `?dedupe=` is the landing spot for the retired /unique page's bookmarks: it
+// sets the filter the page used to hardcode, then strips itself from the URL so
+// the choice stays a normal filter the user can change or clear — a query param
+// left in place would silently re-apply on every reload.
+const route = useRoute()
+const router = useRouter()
+
+function applyDedupeQuery() {
+  const wanted = route.query.dedupe
+  if (typeof wanted !== 'string') return
+  if (['unique', 'duplicate', 'review'].includes(wanted)) {
+    filterStore.dedupeStatus = wanted
+    filterStore.panelOpen = true
+  }
+  router.replace({ name: 'list', query: {} })
+}
+
 onMounted(() => {
+  applyDedupeQuery()
   loadData()
   invitations.load()
   loaded.value = true

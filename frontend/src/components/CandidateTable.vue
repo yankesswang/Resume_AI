@@ -1,201 +1,192 @@
 <template>
-  <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
-    <!-- Table -->
-    <div ref="scrollEl" class="overflow-x-auto overflow-y-auto" style="max-height: calc(100vh - 220px)">
-      <table class="w-full text-sm">
+  <div class="card overflow-hidden">
+    <div ref="scrollEl" class="overflow-auto" style="max-height: calc(100dvh - 280px)">
+      <table class="w-full table-fixed border-collapse text-small">
         <thead>
-          <tr class="border-b border-gray-200 bg-gray-50 sticky top-0 z-10">
-            <th class="w-10 px-3 py-2.5 text-center"></th>
+          <tr class="sticky top-0 z-10 bg-surface-2">
+            <th class="w-11 border-b border-line px-2.5 py-3"></th>
             <th
               v-for="col in columns"
               :key="col.key"
-              class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-gray-700 transition-colors"
+              class="border-b border-line px-4 py-3 text-micro font-semibold text-ink-muted whitespace-nowrap"
+              :class="[
+                col.sortable !== false ? 'cursor-pointer select-none hover:text-ink' : '',
+                col.align === 'right' ? 'text-right' : 'text-left',
+              ]"
               :style="col.width ? `width: ${col.width}` : ''"
               @click="col.sortable !== false && toggleSort(col.key)"
             >
-              <span class="inline-flex items-center gap-1">
+              <span class="inline-flex items-center gap-1" :class="col.align === 'right' ? 'flex-row-reverse' : ''">
                 {{ col.title }}
-                <span v-if="col.sortable !== false" class="text-gray-300">
-                  <template v-if="sortKey === col.key">
-                    <svg v-if="sortDir === 'asc'" class="w-3 h-3 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" />
-                    </svg>
-                    <svg v-else class="w-3 h-3 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </template>
-                  <svg v-else class="w-3 h-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
-                  </svg>
-                </span>
+                <!-- Only the active sort shows an arrow. The old table drew a
+                     faint glyph on every sortable header, which added nine
+                     competing marks to the busiest row on screen. -->
+                <ChevronDown class="h-3 w-3 text-brand-ink" :class="{ 'rotate-180': sortDir === 'asc' }" :stroke-width="3" v-if="col.sortable !== false && sortKey === col.key" />
               </span>
             </th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100">
+        <tbody>
           <tr
-            v-for="item in sortedCandidates"
+            v-for="item in pagedCandidates"
             :key="item.id"
-            class="hover:bg-blue-50/50 cursor-pointer transition-colors group"
+            class="group cursor-pointer border-b border-line/60 transition-colors hover:bg-surface-2"
             @click="$router.push({ name: 'detail', params: { id: item.id } })"
           >
-            <!-- Bookmark + Invitation -->
-            <td class="px-3 py-3 text-center" @click.stop>
-              <div class="flex items-center justify-center gap-1">
+            <!-- Row actions. Both were always-visible grey glyphs before; now
+                 an unset action only appears on hover, while a *set* one stays
+                 lit — so the column reads as "who is marked", not as chrome. -->
+            <td class="px-2.5 py-3.5 align-middle" @click.stop>
+              <div class="flex items-center justify-center gap-0.5">
                 <button
+                  class="rounded p-1 transition-colors"
+                  :class="bookmarks.has(item.id)
+                    ? 'text-warn-ink'
+                    : 'text-ink-faint opacity-0 hover:text-ink group-hover:opacity-100 focus-visible:opacity-100'"
+                  :title="bookmarks.has(item.id) ? '取消標記感興趣' : '標記為感興趣'"
                   @click="bookmarks.toggle(item.id)"
-                  :class="[
-                    'w-5 h-5 transition-colors',
-                    bookmarks.has(item.id) ? 'text-amber-400' : 'text-gray-200 group-hover:text-gray-300'
-                  ]"
-                  title="Toggle bookmark"
                 >
-                  <svg class="w-5 h-5" :fill="bookmarks.has(item.id) ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-                  </svg>
+                  <Star class="h-4 w-4" :stroke-width="1.8" :fill="bookmarks.has(item.id) ? 'currentColor' : 'none'" />
                 </button>
                 <button
-                  @click="invitations.toggle(item.id)"
-                  :class="[
-                    'w-5 h-5 transition-colors',
-                    invitations.has(item.id) ? 'text-emerald-500' : 'text-gray-200 group-hover:text-gray-300'
-                  ]"
+                  class="rounded p-1 transition-colors"
+                  :class="invitations.has(item.id)
+                    ? 'text-good-ink'
+                    : 'text-ink-faint opacity-0 hover:text-ink group-hover:opacity-100 focus-visible:opacity-100'"
                   :title="invitations.has(item.id) ? '取消邀請標記' : '標記已發邀請'"
+                  @click="invitations.toggle(item.id)"
                 >
-                  <svg class="w-5 h-5" :fill="invitations.has(item.id) ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                  </svg>
+                  <Mail class="h-4 w-4" :stroke-width="1.8" :fill="invitations.has(item.id) ? 'currentColor' : 'none'" />
                 </button>
               </div>
             </td>
 
-            <!-- Name -->
-            <td class="px-3 py-3">
+            <!-- Name. Previously this one cell carried up to six chips —
+                 感興趣 / 實習 / dedupe / 分數 / 邀請已發 — three of which
+                 duplicated a dedicated column or the row-action icons beside
+                 it. Only 身分 and a non-unique dedupe verdict remain: the two
+                 that have no other home. -->
+            <td class="px-4 py-3.5">
               <div class="flex items-center gap-2.5">
-                <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center shrink-0 overflow-hidden">
-                  <img v-if="item.photo_url" :src="item.photo_url" :alt="item.name" class="w-full h-full object-cover" />
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-3 text-small font-semibold text-ink-muted">
+                  <img v-if="item.photo_url" :src="item.photo_url" :alt="item.name" class="h-full w-full object-cover" />
                   <span v-else>{{ item.name?.charAt(0) || '?' }}</span>
                 </div>
-                <span class="font-semibold text-gray-900 whitespace-nowrap">{{ item.name }}</span>
-                <span
-                  v-if="bookmarks.has(item.id)"
-                  class="text-xs font-semibold bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-2 py-0.5 whitespace-nowrap"
-                >感興趣</span>
-                <span
-                  v-if="item.candidate_type"
-                  :class="[
-                    'text-xs font-semibold border rounded-full px-2 py-0.5 whitespace-nowrap',
-                    item.candidate_type === '實習'
-                      ? 'bg-sky-50 text-sky-700 border-sky-200'
-                      : 'bg-slate-50 text-slate-700 border-slate-200'
-                  ]"
-                >{{ item.candidate_type === '實習' ? '實習' : '工程師' }}</span>
-                <span
-                  v-if="item.dedupe_status"
-                  :class="dedupeBadgeClass(item.dedupe_status)"
-                >{{ dedupeLabel(item.dedupe_status) }}</span>
-                <span
-                  v-if="item.overall_score != null"
-                  class="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5 whitespace-nowrap tabular-nums"
-                >分數 {{ formatScore(item.overall_score) }}</span>
-                <span
-                  v-if="invitations.has(item.id)"
-                  class="text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-full px-2 py-0.5 whitespace-nowrap"
-                >邀請已發</span>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="truncate font-medium text-ink">{{ item.name }}</span>
+                    <span
+                      v-if="item.dedupe_status && item.dedupe_status !== 'unique'"
+                      class="chip"
+                      :class="dedupeChipClass(item.dedupe_status)"
+                    >{{ dedupeLabel(item.dedupe_status) }}</span>
+                  </div>
+                  <div class="flex items-center gap-1.5 text-micro text-ink-faint">
+                    <span v-if="item.candidate_type">{{ item.candidate_type === '實習' ? '實習' : '工程師' }}</span>
+                    <span v-if="item.candidate_type && item.code_104" class="opacity-40">·</span>
+                    <span v-if="item.code_104" class="truncate font-mono">{{ item.code_104 }}</span>
+                  </div>
+                </div>
               </div>
             </td>
 
-            <!-- Age -->
-            <td class="px-3 py-3 text-gray-600 tabular-nums">
+            <td class="px-4 py-3.5 text-ink-muted">
               <span v-if="calcAge(item.birth_year) != null">{{ calcAge(item.birth_year) }}</span>
-              <span v-else class="text-gray-300">—</span>
+              <span v-else class="text-ink-faint">—</span>
             </td>
 
-            <!-- 104 Code -->
-            <td class="px-3 py-3">
-              <span v-if="item.code_104" class="font-mono text-xs text-gray-600 bg-gray-100 rounded px-1.5 py-0.5">{{ item.code_104 }}</span>
-              <span v-else class="text-gray-300">—</span>
-            </td>
-
-            <!-- University -->
-            <td class="px-3 py-3">
-              <div v-if="getEdu(item, 'university')" class="text-xs">
-                <div class="font-medium text-gray-900">{{ getEdu(item, 'university').school }}</div>
-                <div class="text-gray-400">{{ getEdu(item, 'university').department }}</div>
+            <td class="px-4 py-3.5">
+              <div v-if="getEdu(item, 'university')" class="min-w-0">
+                <div class="truncate text-ink">{{ getEdu(item, 'university').school }}</div>
+                <div class="truncate text-micro text-ink-faint">{{ getEdu(item, 'university').department }}</div>
               </div>
-              <span v-else class="text-gray-300">—</span>
+              <span v-else class="text-ink-faint">—</span>
             </td>
 
-            <!-- Masters -->
-            <td class="px-3 py-3">
-              <div v-if="getEdu(item, 'masters')" class="text-xs">
-                <div class="font-medium text-gray-900">{{ getEdu(item, 'masters').school }}</div>
-                <div class="text-gray-400">{{ getEdu(item, 'masters').department }}</div>
+            <td class="px-4 py-3.5">
+              <div v-if="getEdu(item, 'masters')" class="min-w-0">
+                <div class="truncate text-ink">{{ getEdu(item, 'masters').school }}</div>
+                <div class="truncate text-micro text-ink-faint">{{ getEdu(item, 'masters').department }}</div>
               </div>
-              <span v-else class="text-gray-300">—</span>
+              <span v-else class="text-ink-faint">—</span>
             </td>
 
-            <!-- Experience -->
-            <td class="px-3 py-3 text-gray-700 whitespace-nowrap text-xs">
-              {{ item.years_of_experience || '無工作經驗' }}
+            <td class="whitespace-nowrap px-4 py-3.5 text-ink-muted">
+              <span v-if="item.years_of_experience">{{ item.years_of_experience }}</span>
+              <span v-else class="text-ink-faint">無經驗</span>
             </td>
 
-            <!-- AI Tier -->
-            <td class="px-3 py-3">
+            <td class="px-4 py-3.5">
               <TierBadge
-                v-if="item.experience_detail?.tier"
+                v-if="item.experience_detail?.tier != null"
                 :tier="item.experience_detail.tier"
                 :tier-label="item.experience_detail.tier_label"
                 size="small"
               />
-              <span v-else class="text-gray-300">—</span>
+              <span v-else class="text-ink-faint">—</span>
             </td>
 
-            <!-- Skills -->
-            <td class="px-3 py-3">
-              <div class="flex flex-wrap gap-1">
+            <td class="px-4 py-3.5">
+              <div v-if="item.skill_tags?.length" class="flex flex-wrap items-center gap-1">
                 <span
-                  v-for="tag in item.skill_tags.slice(0, 5)"
+                  v-for="tag in item.skill_tags.slice(0, 4)"
                   :key="tag"
-                  class="text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full px-2 py-0.5"
+                  class="chip border-line bg-surface-2 text-ink-muted"
                 >{{ tag }}</span>
                 <span
-                  v-if="item.skill_tags.length > 5"
-                  class="text-xs text-gray-400 px-1 py-0.5"
-                >+{{ item.skill_tags.length - 5 }}</span>
+                  v-if="item.skill_tags.length > 4"
+                  class="text-micro text-ink-faint"
+                  :title="item.skill_tags.slice(4).join('、')"
+                >+{{ item.skill_tags.length - 4 }}</span>
               </div>
+              <span v-else class="text-ink-faint">—</span>
             </td>
 
-            <!-- Score -->
-            <td class="px-3 py-3">
+            <td class="px-4 py-3.5 text-right">
               <ScoreBadge :score="item.overall_score" />
             </td>
           </tr>
 
-          <!-- Empty state -->
           <tr v-if="sortedCandidates.length === 0">
-            <td :colspan="columns.length + 1" class="px-6 py-16 text-center text-gray-400 text-sm">
-              No candidates match the current filters.
+            <td :colspan="columns.length + 1" class="px-6 py-20 text-center">
+              <p class="text-base text-ink-muted">沒有符合條件的人選</p>
+              <p class="mt-1 text-small text-ink-faint">試著放寬或清除上方的篩選條件</p>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Footer count -->
-    <div v-if="sortedCandidates.length > 0" class="px-4 py-2.5 border-t border-gray-100 text-xs text-gray-400 bg-gray-50">
-      {{ sortedCandidates.length }} candidate{{ sortedCandidates.length !== 1 ? 's' : '' }}
+    <!-- Pager. Shown only when there is more than one page, so a filtered-down
+         result set does not grow a control that cannot do anything. -->
+    <div
+      v-if="pageCount > 1"
+      class="flex items-center justify-between gap-3 border-t border-line bg-surface-2 px-4 py-3"
+    >
+      <span class="text-micro text-ink-muted tabular-nums">
+        {{ rangeStart }}-{{ rangeEnd }} / 共 {{ sortedCandidates.length }} 位
+      </span>
+      <div class="flex items-center gap-1.5">
+        <button class="btn btn-ghost" :disabled="page === 1" @click="goPage(1)">最前</button>
+        <button class="btn btn-ghost" :disabled="page === 1" @click="goPage(page - 1)">上一頁</button>
+        <span class="px-2 text-micro text-ink-muted tabular-nums">
+          {{ page }} / {{ pageCount }}
+        </span>
+        <button class="btn btn-ghost" :disabled="page === pageCount" @click="goPage(page + 1)">下一頁</button>
+        <button class="btn btn-ghost" :disabled="page === pageCount" @click="goPage(pageCount)">最後</button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useFilterStore } from '../stores/filters'
 import { useBookmarkStore } from '../stores/bookmarks'
 import { useInvitationStore } from '../stores/invitations'
 import ScoreBadge from './ScoreBadge.vue'
 import TierBadge from './TierBadge.vue'
+import { ChevronDown, Mail, Star } from 'lucide-vue-next'
 
 const props = defineProps({
   candidates: { type: Array, default: () => [] },
@@ -209,15 +200,14 @@ const sortKey = ref('overall_score')
 const sortDir = ref('desc')
 
 const columns = [
-  { title: '姓名', key: 'name', width: '160px' },
-  { title: '年齡', key: 'age', width: '70px' },
-  { title: '104代碼', key: 'code_104', width: '140px' },
-  { title: '大學', key: 'university', sortable: false, width: '180px' },
-  { title: '碩士', key: 'masters', sortable: false, width: '180px' },
-  { title: '年資', key: 'years_of_experience', width: '90px' },
-  { title: 'AI Tier', key: 'ai_tier', width: '140px' },
-  { title: '技能', key: 'skill_tags', sortable: false },
-  { title: 'Candidate 分數', key: 'overall_score', width: '120px' },
+  { title: '姓名', key: 'name', width: '150px' },
+  { title: '年齡', key: 'age', width: '56px' },
+  { title: '大學', key: 'university', sortable: false, width: '160px' },
+  { title: '碩士', key: 'masters', sortable: false, width: '160px' },
+  { title: '年資', key: 'years_of_experience', width: '84px' },
+  { title: 'AI Tier', key: 'ai_tier', width: '132px' },
+  { title: '技能', key: 'skill_tags', sortable: false, width: '200px' },
+  { title: '總分', key: 'overall_score', width: '80px', align: 'right' },
 ]
 
 function toggleSort(key) {
@@ -229,15 +219,31 @@ function toggleSort(key) {
   }
 }
 
-const mastersKeywords = ['碩', '研究所', 'Master', 'MBA', 'MS', 'MA']
-const universityKeywords = ['大學', '⼤學', '學士', 'Bachelor', 'BS', 'BA']
+// Each education row arrives tagged with `degree_rank` (phd/master/bachelor/
+// associate/high_school) by the backend's normalise_degree() — the same ladder
+// the min_education hard filter gates on. The keyword lists that used to live
+// here knew nothing of 四技/二技 or 博士班, so a university-of-technology
+// graduate showed a blank 大學 column and a PhD appeared in neither.
+//
+// A doctorate counts as postgraduate for the 碩士 column: the alternative is
+// showing the highest qualification nowhere at all.
+const MASTERS_RANKS = ['master', 'phd']
+const UNIVERSITY_RANKS = ['bachelor']
+
+function isRank(row, ranks) {
+  return ranks.includes(row?.degree_rank)
+}
+
+// Department text still needs splitting when one row packs both degrees into
+// "資訊工程學系、資訊工程學系碩士班"; degree_rank describes the row, not each
+// comma-separated part, so this narrow keyword check stays for that job only.
+const mastersKeywords = ['碩', '博', '研究所', 'Master', 'MBA', 'MS', 'MA', 'PhD']
 
 function getEdu(item, type) {
   const records = item.education || []
   for (const ed of records) {
-    const dl = ed.degree_level || ''
-    if (type === 'masters' && mastersKeywords.some((k) => dl.includes(k))) return ed
-    if (type === 'university' && universityKeywords.some((k) => dl.includes(k))) {
+    if (type === 'masters' && isRank(ed, MASTERS_RANKS)) return ed
+    if (type === 'university' && isRank(ed, UNIVERSITY_RANKS)) {
       const dept = ed.department || ''
       const parts = dept.split(/[、,，]/).map((s) => s.trim()).filter(Boolean)
       const undergradPart = parts.find((p) => !mastersKeywords.some((k) => p.includes(k)))
@@ -271,23 +277,17 @@ function calcAge(birthYear) {
   return new Date().getFullYear() - year
 }
 
-function formatScore(score) {
-  const value = Number(score)
-  if (!Number.isFinite(value)) return '--'
-  return value.toFixed(1)
-}
-
 function dedupeLabel(status) {
-  if (status === 'duplicate') return 'Duplicate'
-  if (status === 'review') return 'Review'
-  return 'Unique'
+  if (status === 'duplicate') return '重複'
+  if (status === 'review') return '待確認'
+  return '唯一'
 }
 
-function dedupeBadgeClass(status) {
-  const base = 'text-xs font-semibold border rounded-full px-2 py-0.5 whitespace-nowrap'
-  if (status === 'duplicate') return `${base} bg-rose-50 text-rose-700 border-rose-200`
-  if (status === 'review') return `${base} bg-violet-50 text-violet-700 border-violet-200`
-  return `${base} bg-emerald-50 text-emerald-700 border-emerald-200`
+// 'unique' is the expected outcome and is no longer badged at all — badging
+// the normal case on every row is what made the dedupe verdict unreadable.
+function dedupeChipClass(status) {
+  if (status === 'duplicate') return 'bg-bad-soft text-bad-ink border-bad-line'
+  return 'bg-warn-soft text-warn-ink border-warn-line'
 }
 
 function parseYearsOfExperience(raw) {
@@ -307,66 +307,38 @@ function matchExperienceRange(years, range) {
   }
 }
 
-const TOP_UNIVERSITY_KEYWORDS = [
-  // 台灣大學 (NTU)
-  '台灣大學', '臺灣大學', '國立台灣大學', '國立臺灣大學',
-  '台大', '臺大',
-  'National Taiwan University', 'National Taiwan Univ.', 'Taiwan University',
-  'NTU', 'N.T.U.', 'N T U',
-
-  // 清華大學 (NTHU) — includes Tsinghua spelling variants
-  '清華大學', '國立清華大學', '清大',
-  'National Tsing Hua University', 'National Tsinghua University',
-  'Tsing Hua University', 'Tsinghua University',
-  'National Tsing Hua Univ.', 'National Tsinghua Univ.',
-  'NTHU', 'N.T.H.U.', 'N T H U',
-
-  // 交通大學 / 陽明交通大學 (NCTU → NYCU after 2021 merger)
-  '交通大學', '國立交通大學', '交大',
-  '陽明交通大學', '陽明交大', '國立陽明交通大學', '國立陽明交大', '陽交大',
-  'National Chiao Tung University', 'Chiao Tung University',
-  'National Chiao-Tung University', 'National Chiao Tung Univ.',
-  'National Yang Ming Chiao Tung University', 'Yang Ming Chiao Tung University',
-  'National Yang-Ming Chiao-Tung University', 'Yang Ming Chiao Tung Univ.',
-  'NCTU', 'N.C.T.U.', 'NYCU', 'N.Y.C.U.',
-
-  // 成功大學 (NCKU)
-  '成功大學', '國立成功大學', '成大',
-  'National Cheng Kung University', 'Cheng Kung University',
-  'National Cheng Kung Univ.', 'National Cheng-Kung University',
-  'NCKU', 'N.C.K.U.',
-
-  // 政治大學 (NCCU)
-  '政治大學', '國立政治大學', '政大',
-  'National Chengchi University', 'Chengchi University',
-  'National Chengchi Univ.', 'National Cheng-Chi University',
-  'NCCU', 'N.C.C.U.',
-
-  // 台灣科技大學 (NTUST / Taiwan Tech)
-  '台灣科技大學', '臺灣科技大學', '國立台灣科技大學', '國立臺灣科技大學',
-  '台科大', '臺科大',
-  'National Taiwan University of Science and Technology',
-  'National Taiwan Univ. of Science and Technology',
-  'National Taiwan University of Science & Technology',
-  'Taiwan Tech', 'Taiwan Tech University',
-  'NTUST', 'N.T.U.S.T.',
-];
-
-
-// Normalize CJK compatibility variants (e.g. ⼤ U+2F23 → 大 U+5927) before matching
-function normalizeHan(s) {
-  return (s || '').normalize('NFKC')
-}
-const TOP_UNIVERSITY_KEYWORDS_NORM = TOP_UNIVERSITY_KEYWORDS.map(normalizeHan)
+// School rank comes from the API as `school_tier` (A/B/C/D), computed by the
+// backend's school_tier() — the same function the scoring pipeline and the
+// hard filter use. This used to be a ~50-entry keyword list maintained here,
+// which could not see the operator overrides saved from the 學校分級 page:
+// promoting a school there moved it in the ranking while this filter kept
+// excluding it, with nothing to indicate the two disagreed.
+const TOP_SCHOOL_TIER = 'A'
 
 function isTopUniversity(candidate) {
-  const edu = candidate.education || []
-  for (const e of edu) {
-    const school = normalizeHan(e.school)
-    if (TOP_UNIVERSITY_KEYWORDS_NORM.some((k) => school.includes(k))) return true
+  return candidate.school_tier === TOP_SCHOOL_TIER
+}
+
+
+/**
+ * Age bands, matched against the same `calcAge(birth_year)` the 年齡 column
+ * shows — never the stored `age`, which is a snapshot from import time and
+ * drifts a year out. A filter that disagreed with the visible column would
+ * look broken.
+ *
+ * An unparsable birth year fails every band: 42 candidates have no usable one,
+ * and letting them through would make "40+" quietly mean "40+ or unknown".
+ */
+function matchAgeRange(age, range) {
+  if (age == null) return false
+  switch (range) {
+    case '~24': return age <= 24
+    case '25-29': return age >= 25 && age <= 29
+    case '30-34': return age >= 30 && age <= 34
+    case '35-39': return age >= 35 && age <= 39
+    case '40+': return age >= 40
+    default: return true
   }
-  const fallback = normalizeHan(candidate.school)
-  return TOP_UNIVERSITY_KEYWORDS_NORM.some((k) => fallback.includes(k))
 }
 
 function matchScoreRange(score, range) {
@@ -396,12 +368,16 @@ const filteredCandidates = computed(() =>
     }
     if (filters.scoreRange != null && filters.scoreRange !== '' && !matchScoreRange(c.overall_score ?? null, filters.scoreRange)) return false
     if (filters.topUniversityOnly && !isTopUniversity(c)) return false
-    if (filters.aiTier && c.experience_detail?.tier !== filters.aiTier) return false
+    // Tier 0 is a real tier — compare against null, not falsiness.
+    if (filters.aiTier != null && filters.aiTier !== '' && c.experience_detail?.tier !== filters.aiTier) return false
     if (filters.hardFilterPassedOnly && c.passed_hard_filter === false) return false
     if (filters.dedupeStatus && c.dedupe_status !== filters.dedupeStatus) return false
     if (filters.importBatchId && c.import_batch_id !== Number(filters.importBatchId)) return false
     if (filters.bookmarkedOnly && !bookmarks.has(c.id)) return false
     if (filters.candidateType && c.candidate_type !== filters.candidateType) return false
+    // `age` is attached by the .map() below, i.e. after this predicate runs —
+    // so derive it here rather than reading c.age, which is still the stored one.
+    if (filters.ageRange && !matchAgeRange(calcAge(c.birth_year), filters.ageRange)) return false
     return true
   }).map((c) => ({ ...c, age: calcAge(c.birth_year), overall_score: c.overall_score ?? null }))
 )
@@ -426,6 +402,41 @@ const sortedCandidates = computed(() => {
 })
 
 const scrollEl = ref(null)
+
+// Rendering every match at once is what put the browser over the edge: the
+// API returns all 3179 candidates in one 6MB response, and a `v-for` over
+// that built ~3179 rows, each carrying an avatar, chips and several SVGs.
+// A plain 3179-row table with no CSS and no JS is enough to crash the
+// renderer on its own, so this is a hard ceiling, not a tuning knob.
+const PAGE_SIZE = 100
+const page = ref(1)
+
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(sortedCandidates.value.length / PAGE_SIZE))
+)
+
+// Re-sorting or re-filtering can leave the cursor past the end of the new
+// result set; clamp rather than render an empty page.
+watch([sortedCandidates, pageCount], () => {
+  if (page.value > pageCount.value) page.value = pageCount.value
+})
+
+const pagedCandidates = computed(() => {
+  const start = (page.value - 1) * PAGE_SIZE
+  return sortedCandidates.value.slice(start, start + PAGE_SIZE)
+})
+
+const rangeStart = computed(() =>
+  sortedCandidates.value.length === 0 ? 0 : (page.value - 1) * PAGE_SIZE + 1
+)
+const rangeEnd = computed(() =>
+  Math.min(page.value * PAGE_SIZE, sortedCandidates.value.length)
+)
+
+function goPage(n) {
+  page.value = Math.min(Math.max(1, n), pageCount.value)
+  if (scrollEl.value) scrollEl.value.scrollTop = 0
+}
 
 defineExpose({
   filteredCount: computed(() => sortedCandidates.value.length),

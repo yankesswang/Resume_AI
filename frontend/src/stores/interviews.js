@@ -8,11 +8,17 @@ import {
   fetchInterviewStatuses,
   createInterviewStatus,
   deleteInterviewStatus,
+  fetchInterviewTypes,
+  createInterviewType,
+  deleteInterviewType,
 } from '../api'
 
 export const useInterviewStore = defineStore('interviews', () => {
   const interviews = ref([])
   const statuses = ref([])
+  // Interview types are operator vocabulary like statuses, not a fixed enum —
+  // loaded from the API so adding one does not need a frontend rebuild.
+  const types = ref([])
 
   // candidateId → latest interview (by interview_date DESC)
   const latestByCandidate = computed(() => {
@@ -28,12 +34,14 @@ export const useInterviewStore = defineStore('interviews', () => {
   })
 
   async function load() {
-    const [ivList, statusList] = await Promise.all([
+    const [ivList, statusList, typeList] = await Promise.all([
       fetchInterviews(),
       fetchInterviewStatuses(),
+      fetchInterviewTypes(),
     ])
     interviews.value = ivList
     statuses.value = statusList
+    types.value = typeList
   }
 
   // id=null → create, id=number → update; reloads interviews after
@@ -65,14 +73,28 @@ export const useInterviewStore = defineStore('interviews', () => {
     statuses.value = statuses.value.filter((s) => s.id !== id)
   }
 
+  async function addType(label, color) {
+    const result = await createInterviewType(label, color)
+    types.value = [...types.value, { ...result, sort_order: 999 }]
+    return result
+  }
+
+  async function removeType(id) {
+    await deleteInterviewType(id)
+    types.value = types.value.filter((t) => t.id !== id)
+  }
+
   return {
     interviews,
     statuses,
+    types,
     latestByCandidate,
     load,
     saveInterview,
     removeInterview,
     addStatus,
     removeStatus,
+    addType,
+    removeType,
   }
 })
