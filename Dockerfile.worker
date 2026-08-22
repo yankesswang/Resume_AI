@@ -1,0 +1,65 @@
+# GPU parse worker — the heavy image. Runs app/worker.py (FastAPI micro-service
+# on port 8100) which turns PDFs into Markdown with Marker's layout/OCR models.
+#
+# This is the ONLY image that needs torch + marker (~1.7GB). Point the API at it
+# with WORKER_URL=http://worker:8100 and the API image stays slim.
+#
+#   docker build -f Dockerfile.worker -t resume-ai-worker:latest .
+#
+# Requires the NVIDIA container runtime on the host for GPU access. It will run
+# CPU-only without one, but Marker on CPU is slow enough to be impractical.
+
+FROM python:3.10-slim-bookworm AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /usr/local/bin/uv
+
+WORKDIR /app
+
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never
+
+COPY pyproject.toml uv.lock* Readme.md ./
+
+# --extra gpu is the difference from the API image: this one WANTS torch.
+RUN uv sync --no-default-groups --extra gpu --no-install-project
+
+# ---------- Runtime ----------
+FROM python:3.10-slim-bookworm AS runtime
+
+# libgl/libglib are needed by the vision stack; curl for the healthcheck.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --system --gid 1001 appuser \
+    && useradd --system --uid 1001 --gid appuser --create-home appuser
+
+WORKDIR /app
+
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --chown=appuser:appuser app/ ./app/
+
+# Marker downloads model weights on first use. Give it a writable, mountable
+# cache so a container restart does not re-download several GB.
+RUN mkdir -p /models /app/output && chown -R appuser:appuser /models /app/output
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    HF_HOME=/models \
+    TORCH_HOME=/models \
+    OUTPUT_DIR=/app/output
+
+USER appuser
+
+EXPOSE 8100
+
+# Longer start-period than the API: the first request loads the models.
+HEALTHCHECK --interval=60s --timeout=10s --start-period=180s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8100/docs >/dev/null || exit 1
+
+# One worker only: the models are large and GPU memory is the bottleneck, so
+# concurrent workers would contend for VRAM rather than add throughput.
+CMD ["uvicorn", "app.worker:app", "--host", "0.0.0.0", "--port", "8100", "--workers", "1"]

@@ -1,0 +1,41 @@
+# Local development overrides.
+#
+# Compose loads this automatically on top of docker-compose.yml, so a bare
+# `docker compose up` is the DEV stack. For production, opt out explicitly:
+#
+#   docker compose -f docker-compose.yml up -d --build
+#
+# Note this file is NOT the primary dev workflow — `./start.sh` (uvicorn
+# --reload + vite dev server, no containers) still works exactly as before and
+# remains the fastest inner loop. This exists for testing the containers
+# themselves before shipping them.
+
+services:
+  api:
+    environment:
+      # Dev defaults mirror today's unconfigured behaviour: no auth, open CORS.
+      AUTH_ENABLED: "false"
+      CORS_ORIGINS: "*"
+      WEB_CONCURRENCY: 1
+    # Publish the API directly so curl / pytest / the vite dev server can reach
+    # it without going through nginx. Localhost-bound: it is unauthenticated here.
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # Live-mount the source so a container restart picks up edits without a
+      # rebuild. Read-only: the container must never write back into the repo.
+      - ./app:/app/app:ro
+      - ./main.py:/app/main.py:ro
+      - ./job_requirement.json:/app/job_requirement.json:ro
+    # --reload is acceptable HERE (dev override) and only here; the production
+    # image's CMD never uses it.
+    command: >
+      sh -c "exec uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+
+  frontend:
+    ports:
+      # 8080 may already be taken by another local service.
+      - "127.0.0.1:8081:80"
+
+  # An `.env` file is required by the production compose file's env_file. In dev
+  # it is optional, so nothing here depends on it existing.

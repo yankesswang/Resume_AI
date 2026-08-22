@@ -16,12 +16,22 @@ output_*/
 reports/
 backups/
 *.db
+# SQLite side-car files: they hold uncommitted pages of the same private data
+# as the .db itself, and *.db does not match them.
+*.db-shm
+*.db-wal
+*.db-journal
+# Timestamped backups (resume_ai.db.bak-20260818-...) - the suffix means *.db
+# misses them, and they are full copies of the candidate database.
+*.db.bak*
 *.sqlite
 *.sqlite3
 *.csv
 *.zip
 *_candidates.json
 sample_candidates.json
+# Loose resumes / JD documents dropped in the repo root
+/*.pdf
 *.log
 *.pid
 *.tmp
@@ -49,6 +59,8 @@ Thumbs.db
 # Environment
 .env
 .env.*
+# ...but the documented template is meant to be committed.
+!.env.example
 
 # uv
 uv.lock

@@ -1,0 +1,44 @@
+# Resume AI job worker — drains the scoring/rescore queue.
+#
+# Only needed when you set JOB_WORKER_INPROCESS=false, which you must do if the
+# API runs with more than one uvicorn worker (otherwise every uvicorn worker
+# starts its own in-process job thread and they contend for the same jobs).
+#
+#   systemctl --user enable --now resume-ai-worker
+#   journalctl --user -u resume-ai-worker -f
+#
+# Claiming is atomic, so running this alongside other workers is safe — the
+# losing worker simply matches 0 rows. What is NOT safe is leaving
+# JOB_WORKER_INPROCESS=true while also running this unit, which just wastes
+# LLM capacity on duplicate attempts.
+
+[Unit]
+Description=Resume AI background job worker
+After=network-online.target resume-ai-api.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=/home/trx50/Project/Resume_AI
+EnvironmentFile=/home/trx50/Project/Resume_AI/.env
+Environment=JOB_WORKER_INPROCESS=false
+
+ExecStart=/usr/bin/env uv run python -m app.worker_queue
+
+Restart=on-failure
+RestartSec=10s
+
+# A rescore of 3179 candidates takes ~2h. Give an in-flight LLM call time to
+# finish; anything still running is requeued from its checkpoint anyway.
+TimeoutStopSec=120s
+KillSignal=SIGINT
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=default.target

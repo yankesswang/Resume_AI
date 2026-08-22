@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# A new push to the same branch makes the previous run irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Never let a runner pick up a checked-in .env, and never let a test open the
+  # real database path. Both are belt-and-braces: tests/conftest.py already
+  # redirects DB_PATH, but CI should not depend on that alone.
+  ENV_FILE: /nonexistent.env
+  DB_PATH: ${{ github.workspace }}/ci_test.db
+
+jobs:
+  test:
+    name: Lint & hermetic tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.10
+        run: uv python install 3.10
+
+      # marker-pdf and torch are ~1.7GB and live in the optional `gpu` extra
+      # (pulled in by the default `local` group). They are imported lazily by
+      # app/document_parser.py and no hermetic test touches them, so CI skips
+      # the default groups entirely and installs only the slim runtime + dev deps.
+      - name: Install dependencies
+        run: uv sync --no-default-groups --group dev
+
+      - name: Lint
+        run: uv run ruff check app/ tests/ main.py scripts/
+
+      # The default addopts deselect `-m integration`, so this runs only the
+      # hermetic suite: no GPU, no LM Studio, no embedding service, no real DB.
+      - name: Run tests
+        run: uv run pytest tests/ -q
+
+      - name: Assert no real database was created
+        run: |
+          if [ -f resume_ai.db ]; then
+            echo "::error::The test suite created resume_ai.db — it must never touch the production database path."
+            exit 1
+          fi

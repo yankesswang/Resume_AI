@@ -1,0 +1,56 @@
+# The repo root holds ~500MB of SQLite databases and several GB of resume
+# archives. Without these rules the build context alone is larger than the
+# images, and applicant PII would be copied into every layer.
+
+# --- Applicant data: never goes into an image ---
+*.db
+*.db-shm
+*.db-wal
+*.db.bak-*
+*.sqlite
+*.sqlite3
+data/
+data_*/
+output/
+output_*/
+backups/
+reports/
+*.zip
+*履歷*/
+*.csv
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Build/runtime detritus ---
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+*.log
+*.pid
+dist/
+
+# --- Frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# --- VCS / tooling ---
+.git/
+.github/
+.gitignore
+.codegraph/
+.codex/
+.claude/
+.vscode/
+.idea/
+
+# --- Docs and local scratch ---
+*.md
+!Readme.md
+docs/

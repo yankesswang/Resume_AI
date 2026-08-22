@@ -1,0 +1,56 @@
+# Resume AI API — systemd unit for deploying without Docker.
+#
+# Install as a user service (matches this project's existing ~/.config/systemd/user setup):
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/systemd/*.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now resume-ai-api
+#   loginctl enable-linger $USER      # keeps it running after logout
+#
+# Logs:   journalctl --user -u resume-ai-api -f
+#
+# Edit WorkingDirectory/EnvironmentFile below if the checkout is not at
+# /home/trx50/Project/Resume_AI.
+
+[Unit]
+Description=Resume AI API (FastAPI)
+Documentation=file:///home/trx50/Project/Resume_AI/docs/DEPLOYMENT.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=/home/trx50/Project/Resume_AI
+
+# Secrets live here, not in this unit file — it is world-readable in the repo.
+# Must define AUTH_ENABLED=true, API_KEYS=... and CORS_ORIGINS=... for anything
+# reachable beyond localhost. The app refuses to start on an unsafe combination.
+EnvironmentFile=/home/trx50/Project/Resume_AI/.env
+
+# No --reload: it restarts on every write into output/ during a parse run.
+# Single worker by default; see docs/DEPLOYMENT.md before raising it, because
+# the in-process job worker would otherwise be started N times.
+ExecStart=/usr/bin/env uv run python -m uvicorn main:app \
+    --host 127.0.0.1 --port 8000 --workers 1
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+# Scoring runs hold SQLite write transactions; give them time to finish.
+KillSignal=SIGINT
+
+# --- Hardening ---
+# The service needs to write the DB, data/ and output_*/ inside the checkout,
+# so ProtectHome/ReadOnlyPaths cannot be blanket-applied to a home directory
+# deployment. These still hold.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=default.target

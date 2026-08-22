@@ -1,0 +1,82 @@
+# Production stack: nginx + SPA -> API -> (optional) GPU parse worker.
+#
+#   cp .env.example .env    # then set AUTH_ENABLED, API_KEYS, CORS_ORIGINS
+#   docker compose up -d --build
+#
+# The GPU worker is opt-in:  docker compose --profile gpu up -d --build
+# Without it the API parses with PARSER_BACKEND=plumber (text-layer PDFs only).
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: resume-ai-api:latest
+    restart: unless-stopped
+    env_file:
+      # required: false so `docker compose up` works before you create .env.
+      # Copy .env.example to .env and set AUTH_ENABLED/API_KEYS/CORS_ORIGINS
+      # before exposing this beyond localhost.
+      - path: .env
+        required: false
+    environment:
+      # Container paths win over anything in .env, which carries host paths.
+      DB_PATH: /data/resume_ai.db
+      DATA_DIR: /app/data
+      OUTPUT_DIR: /app/output
+      PHOTO_ROOT: /app/output
+    volumes:
+      # SQLite in WAL mode needs real POSIX locking. A named local volume is
+      # safe; an NFS/SMB bind mount is NOT — WAL will corrupt or lock up there.
+      - db-data:/data
+      - resume-pdfs:/app/data
+      - resume-output:/app/output
+    expose: ["8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: resume-ai-frontend:latest
+    restart: unless-stopped
+    ports:
+      # Host 8080 -> nginx. Put a TLS terminator in front of this for anything
+      # beyond a trusted LAN: API keys travel in a header and are plaintext
+      # without HTTPS.
+      - "127.0.0.1:8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # GPU PDF parser. Only started with `--profile gpu`, and only useful on a host
+  # with the NVIDIA container runtime.
+  worker:
+    profiles: ["gpu"]
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: resume-ai-worker:latest
+    restart: unless-stopped
+    expose: ["8100"]
+    volumes:
+      # Marker downloads several GB of weights on first run; persist them.
+      - model-cache:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  db-data:
+  resume-pdfs:
+  resume-output:
+  model-cache:
