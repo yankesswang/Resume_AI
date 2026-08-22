@@ -2,15 +2,69 @@
 name = "resume-ai"
 version = "0.1.0"
 description = "AI-powered resume screening and candidate scoring system"
-readme = "README.md"
+readme = "Readme.md"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.129.0",
     "httpx>=0.28.1",
     "python-multipart>=0.0.9",
-    "marker-pdf>=1.6",
     "pdfplumber>=0.11",
     "pillow<11.0.0",
-    "torch>=2.10.0",
     "uvicorn>=0.40.0",
 ]
+
+# marker + torch are ~1.7GB and are imported ONLY by app/document_parser.py,
+# lazily via parser_service.get_parser(). Keeping them out of the base
+# dependencies lets the API container install a ~30-package slim set with no
+# CUDA at all; only the parse worker image (Dockerfile.worker) needs the extra.
+[project.optional-dependencies]
+gpu = [
+    "marker-pdf>=1.6",
+    "torch>=2.10.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.9",
+]
+# Installed by default for `uv run`/`uv sync`, so local development keeps the
+# marker backend working exactly as before this split. Containers opt out with
+# `--no-default-groups`.
+local = [
+    "resume-ai[gpu]",
+]
+
+[tool.uv]
+default-groups = ["dev", "local"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Integration tests need a live LM Studio + embedding service on the GPU box.
+# They are opt-in (`-m integration`) so the default suite stays hermetic and CI
+# never depends on hardware being up.
+addopts = "-m 'not integration'"
+markers = [
+    "integration: requires a live LM Studio / embedding service (deselected by default)",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+# Deliberately narrow: this gates CI on real defects (undefined names, unused
+# imports, mutable-default and except-handling bugs), not on formatting. The
+# working tree has large uncommitted changes, so a whole-codebase restyle would
+# bury them in noise. Widen to E/W/I/UP once the tree is settled.
+select = ["F", "B"]
+ignore = [
+    "B008",    # FastAPI Depends() in argument defaults is the framework idiom
+    "B905",    # zip(strict=) — pre-3.10 call sites, not a live bug here
+]
+
+[tool.ruff.lint.per-file-ignores]
+# sys.path bootstrap must run before the app imports it enables.
+"tests/*" = ["E402"]
+# The script-style tests re-import inside functions to keep each case self-contained.
+"tests/test_scoring.py" = ["F401", "F811"]

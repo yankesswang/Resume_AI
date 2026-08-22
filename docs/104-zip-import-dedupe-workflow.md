@@ -81,8 +81,8 @@ npm run dev
 
 URL：
 
-- 全部候選人：`http://127.0.0.1:5173/`
-- Unique view：`http://127.0.0.1:5173/unique`
+- 全部候選人：`http://127.0.0.1:3002/`
+- Unique view：`http://127.0.0.1:3002/unique`
 
 前端 filters 已支援：
 

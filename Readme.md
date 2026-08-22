@@ -35,7 +35,7 @@ uv run python -m uvicorn main:app --reload --port 8000
 ```bash
 cd frontend
 npm install
-npm run dev        # → http://localhost:5173
+npm run dev        # → http://localhost:3002
 ```
 
 The Vite dev server proxies `/api`, `/output`, and `/upload` to the backend automatically.
