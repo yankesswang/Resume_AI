@@ -10,14 +10,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import DB_PATH, init_db, insert_candidate
+from app.database import record_import_attempt, refresh_import_batch_counts
 from app.regex_parser import parse_resume_markdown
 from app.document_parser import DocumentParser
 from app.parser_service import get_parser
@@ -73,20 +74,50 @@ def import_pdf(
     save_split_md: bool,
     dry_run: bool,
     parser: DocumentParser,
-) -> tuple[int, int]:
+    batch_name: str = "",
+) -> tuple[int, int, int]:
+    """Import one PDF. Returns (inserted, failed_candidates, failed_files)."""
     stem = pdf_path.stem
     output_dir = output_root / stem
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\nParsing PDF: {pdf_path}")
-    text, original_md_path, _ = parser.parse_pdf(str(pdf_path), str(output_dir))
+    try:
+        text, original_md_path, _ = parser.parse_pdf(str(pdf_path), str(output_dir))
+    except Exception as exc:
+        # Record the failure instead of only printing it. A parse that dies here
+        # used to leave no row at all, so /imports showed a clean batch while the
+        # candidates were silently missing.
+        print(f"  [FAIL] {pdf_path.name}: {exc}")
+        if not dry_run and batch_name:
+            bid, _fid = record_import_attempt(
+                batch_name=batch_name,
+                source_pdf_path=str(pdf_path),
+                parse_status="failed",
+                error_message=f"{type(exc).__name__}: {exc}",
+                output_dir=str(output_dir),
+            )
+            refresh_import_batch_counts(bid)
+        return 0, 0, 1
+
     print(f"  markdown chars={len(text)} original_md={original_md_path}")
 
     candidates_md = _split_candidates(parser, text)
     print(f"  detected candidates={len(candidates_md)}")
 
+    batch_id = file_id = None
+    if not dry_run and batch_name:
+        batch_id, file_id = record_import_attempt(
+            batch_name=batch_name,
+            source_pdf_path=str(pdf_path),
+            parse_status="parsed",
+            original_md_path=str(original_md_path),
+            output_dir=str(output_dir),
+        )
+
     inserted = 0
     failed = 0
+    errors: list[str] = []
     for i, md in enumerate(candidates_md, 1):
         log_name = _extract_log_name(md, i)
         md_path = str(original_md_path)
@@ -110,14 +141,31 @@ def import_pdf(
                 raw_markdown=md,
                 source_pdf_path=str(pdf_path),
                 source_md_path=md_path,
+                import_batch_id=batch_id,
+                import_file_id=file_id,
             )
             inserted += 1
             print(f"  [OK]  [{i}] id={candidate_id} name={extract.name or log_name}")
         except Exception as exc:
             failed += 1
+            errors.append(f"[{i}] {log_name}: {exc}")
             print(f"  [ERR] [{i}] {log_name}: {exc}")
 
-    return inserted, failed
+    # A PDF that parsed but whose candidates partly failed is neither "parsed"
+    # nor "failed": mark it so the UI can show which files need a second look.
+    if not dry_run and batch_id is not None:
+        if failed:
+            record_import_attempt(
+                batch_name=batch_name,
+                source_pdf_path=str(pdf_path),
+                parse_status="partial",
+                error_message=f"{failed} 位候選人解析失敗\n" + "\n".join(errors[:20]),
+                original_md_path=str(original_md_path),
+                output_dir=str(output_dir),
+            )
+        refresh_import_batch_counts(batch_id)
+
+    return inserted, failed, 0
 
 
 def main() -> int:
@@ -132,6 +180,11 @@ def main() -> int:
         help="Save split candidate markdown files under output/",
     )
     parser.add_argument("--dry-run", action="store_true", help="Parse only; do not write DB")
+    parser.add_argument(
+        "--batch-name",
+        default="",
+        help="Import batch name shown on /imports (default: 批次匯入 <today>)",
+    )
     parser.add_argument(
         "--parser-backend",
         choices=["marker", "plumber"],
@@ -161,17 +214,21 @@ def main() -> int:
     parser_obj = get_parser(args.parser_backend)
     total_inserted = 0
     total_failed = 0
+    failed_files = 0
+    batch_name = args.batch_name or f"批次匯入 {date.today().isoformat()}"
     try:
         for pdf in pdfs:
-            inserted, failed = import_pdf(
+            inserted, failed, bad_file = import_pdf(
                 pdf_path=pdf,
                 output_root=output_root,
                 save_split_md=args.save_split_md,
                 dry_run=args.dry_run,
                 parser=parser_obj,
+                batch_name=batch_name,
             )
             total_inserted += inserted
             total_failed += failed
+            failed_files += bad_file
     finally:
         parser_obj.cleanup()
 
@@ -181,8 +238,11 @@ def main() -> int:
     print(f"Candidates processed: {total_inserted + total_failed}")
     print(f"Candidates imported: {total_inserted}")
     print(f"Candidates failed: {total_failed}")
+    print(f"PDF files failed: {failed_files}")
+    if not args.dry_run:
+        print(f"Import batch: {batch_name}")
     print(f"dry_run: {args.dry_run}")
-    return 0 if total_failed == 0 else 2
+    return 0 if (total_failed == 0 and failed_files == 0) else 2
 
 
 if __name__ == "__main__":
